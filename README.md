@@ -47,15 +47,7 @@ Poseidon/
 ├─ cli.py
 ├─ config.json
 ├─ requirements.txt
-├─ requirements_v4.txt
 ├─ README.md
-├─ CHANGELOG.md
-├─ CONTRIBUTING.md
-├─ SECURITY.md
-├─ TESTING.md
-├─ FINAL_CONSOLIDATION.md
-├─ REPO_BRANDING.md
-├─ release_notes_v1.md
 ├─ LICENSE
 ├─ core/
 │  ├─ adb_handler.py
