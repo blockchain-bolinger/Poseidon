@@ -5,7 +5,7 @@
 It combines:
 - interactive terminal workflows
 - headless CLI automation
-- device monitoring with CSV / JSONL export
+- device monitoring with CSV / JSON export
 - OCR-assisted UI text detection
 - structured operator-focused workflows
 - Raspberry Pi / Linux friendly deployment
