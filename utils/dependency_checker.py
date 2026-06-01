@@ -22,6 +22,10 @@ def get_binary_version(name: str) -> str:
             res = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=2)
             first_line = res.stdout.splitlines()[0]
             return first_line.split()[2]
+        elif name == "tesseract":
+            res = subprocess.run(["tesseract", "--version"], capture_output=True, text=True, timeout=2)
+            first_line = res.stdout.splitlines()[0]
+            return first_line.split()[1]
     except:
         pass
     return "unbekannt"
@@ -35,7 +39,9 @@ def check_all_dependencies() -> Tuple[Dict[str, bool], List[str]]:
         "adb": {"required": True, "description": "Android Debug Bridge (für alle Funktionen)"},
         "scrcpy": {"required": False, "description": "Screen Copy (für Bildschirmspiegelung)"},
         "ffmpeg": {"required": False, "description": "FFmpeg (für Video-Konvertierung/GIFs)"},
-        "nmap": {"required": False, "description": "Nmap (für Netzwerksuche)"}
+        "nmap": {"required": False, "description": "Nmap (für Netzwerksuche)"},
+        "tesseract": {"required": False, "description": "Tesseract OCR (für Vision / OCR v2)"},
+        "tcpdump": {"required": False, "description": "Tcpdump (für Netzwerk-Sniffing)"}
     }
     
     results = {}

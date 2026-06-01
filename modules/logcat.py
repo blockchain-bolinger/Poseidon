@@ -1,13 +1,17 @@
-import subprocess
-import os
+import re
+import time
+from rich.console import Console
+from rich.text import Text
 from utils.ui_helpers import clear_screen, print_header, menu_prompt, wait_for_enter, confirm
 from utils.file_utils import get_timestamp, save_file
+
+console = Console()
 
 def show_menu(device_manager, adb):
     while True:
         clear_screen()
         print_header("Logcat Viewer", "System-Logs anzeigen")
-        print("1. 📋 Logcat live anzeigen")
+        print("1. 📋 Logcat live anzeigen (Farbcodiert)")
         print("2. 💾 Logcat in Datei speichern")
         print("3. 🔍 Nach Schlagwort filtern")
         print("4. 📊 Logcat nach Priorität filtern")
@@ -33,13 +37,79 @@ def logcat_live(device_manager, adb):
     serial = device_manager.get_current_device()
     if not serial:
         return
-    print("Drücke Ctrl+C zum Beenden.")
+    
+    console.print("[bold yellow]Starte farbcodiertes Logcat live Streaming... (Strg+C zum Beenden)[/]")
+    time.sleep(1.0) # Kurze Pause, damit Hinweistext lesbar ist
+    
     try:
-        # Direkter subprocess-Aufruf für Live-Ausgabe
-        cmd = f"adb -s {serial} logcat"
-        subprocess.run(cmd, shell=True)
+        # Verwende threadtime für strukturiertere Timestamps und PIDs
+        for line in adb.run_shell_stream("logcat -v threadtime", serial):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Pattern 1: threadtime (z. B. "06-01 14:54:40.123  1234  5678 I ActivityManager: Displayed ...")
+            threadtime_match = re.match(r"^(\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+(\d+)\s+(\d+)\s([VDIWEF])\s+(.*?):\s(.*)$", line)
+            if threadtime_match:
+                time_str, pid, tid, level, tag, msg = threadtime_match.groups()
+                level_styles = {
+                    'V': ('cyan', 'VERBOSE'),
+                    'D': ('blue', 'DEBUG'),
+                    'I': ('green', 'INFO'),
+                    'W': ('yellow', 'WARN'),
+                    'E': ('red', 'ERROR'),
+                    'F': ('bold red reverse', 'FATAL'),
+                }
+                style_color, level_name = level_styles.get(level, ('white', 'UNKNOWN'))
+                
+                text = Text()
+                text.append(f"{time_str} ", style="dim")
+                text.append(f"{level_name:<7} ", style=style_color)
+                text.append(f"[{tag.strip()}] ", style="magenta")
+                text.append(msg)
+                console.print(text)
+                continue
+
+            # Pattern 2: brief (z. B. "I/ActivityManager( 1234): Displayed ...")
+            brief_match = re.match(r"^([VDIWEF])\/(.*?)\(\s*(\d+)\):\s(.*)$", line)
+            if brief_match:
+                level, tag, pid, msg = brief_match.groups()
+                level_styles = {
+                    'V': ('cyan', 'VERBOSE'),
+                    'D': ('blue', 'DEBUG'),
+                    'I': ('green', 'INFO'),
+                    'W': ('yellow', 'WARN'),
+                    'E': ('red', 'ERROR'),
+                    'F': ('bold red reverse', 'FATAL'),
+                }
+                style_color, level_name = level_styles.get(level, ('white', 'UNKNOWN'))
+                
+                text = Text()
+                text.append(f"{level_name:<7} ", style=style_color)
+                text.append(f"[{tag.strip()}] ", style="magenta")
+                text.append(msg)
+                console.print(text)
+                continue
+                
+            # Fallback: Einfaches Highlighten per Substring
+            fallback_color = "white"
+            if " E/" in line or line.startswith("E/"):
+                fallback_color = "red"
+            elif " W/" in line or line.startswith("W/"):
+                fallback_color = "yellow"
+            elif " I/" in line or line.startswith("I/"):
+                fallback_color = "green"
+            elif " D/" in line or line.startswith("D/"):
+                fallback_color = "blue"
+            elif " V/" in line or line.startswith("V/"):
+                fallback_color = "cyan"
+            elif " F/" in line or line.startswith("F/"):
+                fallback_color = "bold red"
+                
+            console.print(line, style=fallback_color)
+            
     except KeyboardInterrupt:
-        pass
+        console.print("\n[yellow]Live-Logcat gestoppt.[/]")
     wait_for_enter()
 
 def logcat_save(device_manager, adb):

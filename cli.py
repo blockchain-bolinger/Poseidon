@@ -13,8 +13,8 @@ sys.path.insert(0, str(BASE_DIR))
 from core.device_manager import DeviceManager
 from core.adb_handler import ADBHandler
 from core.logger import logger
-from services.monitoring_service_v2 import MonitoringServiceV2
-from services.vision_service_v2 import VisionServiceV2
+from services.monitoring_service import MonitoringService
+from services.vision_service import VisionService
 from utils.dependency_checker import check_all_dependencies
 
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -37,24 +37,12 @@ def default_config() -> dict:
 
 
 def load_config() -> dict:
-    config = default_config()
-    if not CONFIG_PATH.exists():
-        return config
-    try:
-        raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.warning(f"config.json konnte nicht sauber gelesen werden: {e}")
-        return config
-
-    legacy_global_keys = {"backup_path", "screenshot_path", "record_duration", "scrcpy_path", "log_path"}
-    config.update({k: v for k, v in raw.items() if k not in legacy_global_keys and k != "global"})
-    if isinstance(raw.get("global"), dict):
-        config["global"].update(raw["global"])
-    for key in legacy_global_keys:
-        if key in raw:
-            config["global"][key] = raw[key]
-    config["devices"] = raw.get("devices", {})
-    return config
+    if CONFIG_PATH.exists():
+        try:
+            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"config.json konnte nicht sauber gelesen werden: {e}")
+    return default_config()
 
 
 def init_runtime():
@@ -71,8 +59,8 @@ def init_runtime():
     Path(config["global"].get("log_path", "./logs")).mkdir(parents=True, exist_ok=True)
     device_manager = DeviceManager(config)
     adb = ADBHandler(device_manager)
-    monitoring = MonitoringServiceV2(device_manager, adb, export_dir=config["global"].get("log_path", "./logs"))
-    vision = VisionServiceV2(device_manager, adb, screenshot_dir=config["global"].get("screenshot_path", "./screenshots"))
+    monitoring = MonitoringService(device_manager, adb, export_dir=config["global"].get("log_path", "./logs"))
+    vision = VisionService(device_manager, adb, screenshot_dir=config["global"].get("screenshot_path", "./screenshots"))
     return config, device_manager, adb, monitoring, vision
 
 
@@ -195,7 +183,7 @@ def cmd_vision_tap_text(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="poseidon-cli-v4", description="Headless CLI für Poseidon v4")
+    parser = argparse.ArgumentParser(prog="poseidon-cli", description="Headless CLI für Poseidon")
     sub = parser.add_subparsers(dest="command")
     sub.required = True
 

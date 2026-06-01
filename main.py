@@ -38,8 +38,8 @@ from modules import (
     dashboard,
     files,
     analyzer,
-    monitoring_v2,
-    ui_vision_v2,
+    monitoring,
+    ui_vision,
 )
 
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -288,9 +288,9 @@ def handle_menu_choice(choice: int, config: Dict[str, Any], device_manager: Devi
     elif choice == 20:
         analyzer.show_menu(device_manager, adb)
     elif choice == 21:
-        monitoring_v2.show_menu(device_manager, adb, config)
+        monitoring.show_menu(device_manager, adb, config)
     elif choice == 22:
-        ui_vision_v2.show_menu(device_manager, adb, config)
+        ui_vision.show_menu(device_manager, adb, config)
     return True
 
 

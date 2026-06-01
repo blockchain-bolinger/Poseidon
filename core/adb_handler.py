@@ -1,14 +1,14 @@
 import shlex
 import subprocess
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Generator
 
 from core.logger import logger
 from core.result import CommandResult
 
 
-class ADBHandlerV2:
-    """Gehärteter ADB-Handler mit Result-Objekt, Retry-Logik und Cache."""
+class ADBHandler:
+    """Gehärteter ADB-Handler mit Result-Objekt, Retry-Logik, Cache und Streaming."""
 
     def __init__(self, device_manager, cache_ttl: int = 30, default_timeout: int = 30, retries: int = 1):
         self.device_manager = device_manager
@@ -101,6 +101,33 @@ class ADBHandlerV2:
     def run_shell(self, shell_cmd: str, serial: Optional[str] = None, timeout: Optional[int] = None, use_cache: bool = False) -> Tuple[str, str, int]:
         return self.run(f"shell {shell_cmd}", serial=serial, timeout=timeout, use_cache=use_cache)
 
+    def run_shell_stream(self, shell_cmd: str, serial: Optional[str] = None) -> Generator[str, None, None]:
+        """Führt einen Shell-Befehl aus und streamt stdout zeilenweise (nicht blockierend)."""
+        full_cmd = self._build_cmd(f"shell {shell_cmd}", serial)
+        try:
+            cmd_list = shlex.split(full_cmd)
+            process = subprocess.Popen(
+                cmd_list,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            for line in process.stdout:
+                yield line
+        except Exception as e:
+            logger.error(f"Fehler bei Streaming-Befehl {full_cmd}: {str(e)}")
+            yield f"Fehler: {str(e)}\n"
+        finally:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+
     def get_device_property(self, prop: str, serial: Optional[str] = None) -> str:
         s = self._get_serial(serial)
         cache_key = f"{s}:{prop}"
@@ -113,8 +140,4 @@ class ADBHandlerV2:
     def clear_cache(self) -> None:
         self._generic_cache = {}
         self._property_cache = {}
-        logger.info("ADBHandlerV2 cache cleared.")
-
-
-# Backward-compatible alias
-ADBHandler = ADBHandlerV2
+        logger.info("ADBHandler cache cleared.")

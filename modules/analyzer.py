@@ -24,9 +24,10 @@ def monitor_app_files(adb, serial):
     print(f"{fg.CYAN}Überwache Datei-Events für {pkg}... (Strg+C zum Stoppen){style.RESET}")
     # Nutzt logcat, um File-Zugriffe zu "sniffen" (kann je nach App-Verhalten variieren)
     try:
-        adb.run_shell(f"logcat | grep '{pkg}'", serial)
+        for line in adb.run_shell_stream(f"logcat | grep '{pkg}'", serial):
+            print(line.strip())
     except KeyboardInterrupt:
-        pass
+        print(f"\n{fg.YELLOW}App-Spion gestoppt.{style.RESET}")
 
 def set_proxy(adb, serial):
     ip = input("PC-IP Adresse: ")
