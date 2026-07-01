@@ -23,10 +23,17 @@ class DeviceManager:
             return []
 
         devices = []
-        for line in result[0].splitlines()[1:]:
-            if line.strip() and "device" in line and "offline" not in line:
-                serial = line.split()[0]
-                devices.append(serial)
+        raw_stdout = result[0] or ""
+        for line in raw_stdout.splitlines()[1:]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("List of devices attached"):
+                continue
+            if "offline" in stripped:
+                continue
+            serial = stripped.split()[0]
+            devices.append(serial)
 
         self.devices = devices
         logger.debug(f"Geräteliste aktualisiert: {devices}")

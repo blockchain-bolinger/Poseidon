@@ -48,7 +48,7 @@ def print_json(data):
 
 
 def cmd_devices_list(args) -> int:
-    _, device_manager, _, _, _ = init_runtime()
+    config, device_manager, _, _, _ = init_runtime()
     devices = device_manager.refresh_devices()
     payload = {"devices": devices, "count": len(devices)}
     if args.json:

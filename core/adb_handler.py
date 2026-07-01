@@ -20,11 +20,10 @@ class ADBHandler:
         self._last_serial = None
 
     def _get_serial(self, serial: Optional[str] = None) -> Optional[str]:
-        current_serial = serial if serial else self.device_manager.get_current_device()
-        if current_serial != self._last_serial:
-            self.clear_cache()
-            self._last_serial = current_serial
-        return current_serial
+        if serial:
+            return serial
+        cached = getattr(self, "_last_serial", None)
+        return cached
 
     def _build_cmd(self, cmd: str, serial: Optional[str] = None) -> str:
         s = self._get_serial(serial)

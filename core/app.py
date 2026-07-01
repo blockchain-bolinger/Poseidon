@@ -104,8 +104,12 @@ class AppContext:
         self.check_dependencies()
         self.device_manager = DeviceManager(self.config)
         self.adb = ADBHandler(self.device_manager)
+        self.device_manager._adb = self.adb
         self.plugin_manager = PluginManager()
-        self.plugin_manager.discover_plugins()
+        try:
+            self.plugin_manager.discover_plugins()
+        except Exception as exc:
+            logger.warning("Plugin-Discovery fehlgeschlagen: %s", exc)
         return self.config
 
     def current_device(self) -> Optional[str]:
