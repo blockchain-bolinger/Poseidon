@@ -78,6 +78,10 @@ class AppDebloaterPlugin(PluginBase):
                 packages.add(line.split(":")[-1].strip())
         return packages
 
+    @property
+    def destructive(self) -> bool:
+        return True
+
     def run(self, device_manager: Any, adb: Any, config: Dict[str, Any]) -> None:
         serial = device_manager.get_current_device()
         if not serial:

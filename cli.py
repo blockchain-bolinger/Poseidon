@@ -1,67 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
-
-from core.device_manager import DeviceManager
-from core.adb_handler import ADBHandler
+from core.app import AppContext
 from core.logger import logger
 from services.monitoring_service import MonitoringService
 from services.vision_service import VisionService
-from utils.dependency_checker import check_all_dependencies
 
-CONFIG_PATH = BASE_DIR / "config.json"
+BASE_DIR = Path(__file__).resolve().parent
+CONTEXT = AppContext()
 
 
 def default_config() -> dict:
-    return {
-        "version": "4.0-dev",
-        "language": "de",
-        "theme": "light",
-        "global": {
-            "backup_path": "./backups",
-            "screenshot_path": "./screenshots",
-            "record_duration": 30,
-            "scrcpy_path": "scrcpy",
-            "log_path": "./logs",
-        },
-        "devices": {},
-    }
+    return CONTEXT._defaults()
 
 
 def load_config() -> dict:
-    if CONFIG_PATH.exists():
-        try:
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.warning(f"config.json konnte nicht sauber gelesen werden: {e}")
-    return default_config()
+    return CONTEXT.load_config()
 
 
-def init_runtime():
-    results, warnings = check_all_dependencies()
-    if not results.get("adb"):
-        print("ADB wurde nicht gefunden.")
-        sys.exit(1)
-    if warnings:
-        for warning in warnings:
-            logger.warning(warning)
-    config = load_config()
-    Path(config["global"].get("screenshot_path", "./screenshots")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("backup_path", "./backups")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("log_path", "./logs")).mkdir(parents=True, exist_ok=True)
-    device_manager = DeviceManager(config)
-    adb = ADBHandler(device_manager)
-    monitoring = MonitoringService(device_manager, adb, export_dir=config["global"].get("log_path", "./logs"))
-    vision = VisionService(device_manager, adb, screenshot_dir=config["global"].get("screenshot_path", "./screenshots"))
-    return config, device_manager, adb, monitoring, vision
+def init_runtime() -> tuple[dict[Any, Any], Any, Any, MonitoringService, VisionService]:
+    config = CONTEXT.init_runtime()
+    monitoring = MonitoringService(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        poseidon_version=config.get("version", "5.0-dev"),
+        export_dir=config["global"].get("log_path", "./logs"),
+    )
+    vision = VisionService(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        screenshot_dir=config["global"].get("screenshot_path", "./screenshots"),
+    )
+    return config, CONTEXT.device_manager, CONTEXT.adb, monitoring, vision
 
 
 def print_json(data):
@@ -153,6 +132,8 @@ def cmd_vision_find_text(args) -> int:
 
 
 def cmd_vision_tap_text(args) -> int:
+    if not CONTEXT.device_manager.require_authorized_device():
+        return 1
     _, _, adb, _, vision = init_runtime()
     image_path = vision.take_screenshot(serial=args.serial, filename="vision_v4_tap_capture.png")
     match = vision.best_match(args.query, image_path, min_confidence=args.min_confidence)

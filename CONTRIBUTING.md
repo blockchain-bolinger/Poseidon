@@ -33,18 +33,18 @@ Avoid:
 
 ## Recommended workflow
 
-1. Review the current recommended path:
-   - `main_v5.py`
-   - `cli_v4.py`
-   - `core/adb_handler_v2.py`
-   - `services/monitoring_service_v2.py`
-   - `services/vision_service_v2.py`
+1. Review the current recommended paths:
+   - `main.py`
+   - `cli.py`
+   - `core/app.py`
+   - `services/monitoring_service.py`
+   - `services/vision_service.py`
 
 2. Make one logically scoped change.
 
 3. Validate using:
-   - `TESTING.md`
-   - `scripts/smoke_test_v4.sh`
+   - `pytest`
+   - `python -m py_compile`
 
 4. Update documentation if behavior changed.
 
@@ -81,7 +81,8 @@ Update the relevant docs when you change:
 - required environment setup
 
 Primary documentation files:
-- `README_v4.md`
+- `README.md`
+- `CONTRIBUTING.md`
 - `TESTING.md`
 
 ---

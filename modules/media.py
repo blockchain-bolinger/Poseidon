@@ -3,6 +3,7 @@ import subprocess
 import time
 from utils.ui_helpers import clear_screen, print_header, menu_prompt, wait_for_enter, confirm
 from utils.file_utils import get_timestamp, ensure_dir
+from core.logger import audit_logger
 
 def show_menu(device_manager, adb, config):
     while True:
@@ -34,6 +35,8 @@ def show_menu(device_manager, adb, config):
             burst_screenshots(device_manager, adb, config)
 
 def take_screenshot(device_manager, adb, config):
+    if not device_manager.require_authorized_device():
+        return
     serial = device_manager.get_current_device()
     if not serial:
         return
@@ -48,8 +51,9 @@ def take_screenshot(device_manager, adb, config):
 
 def record_screen(device_manager, adb, config):
     serial = device_manager.get_current_device()
-    if not serial:
+    if not serial or not device_manager.require_authorized_device(serial):
         return
+    audit_logger.info("media.record start serial=%s", serial)
     print("Erweiterte Bildschirmaufnahme")
     duration = input(f"Dauer in Sekunden [{config['record_duration']}]: ") or str(config['record_duration'])
     bitrate = input("Bitrate (z.B. 4M, 8M) [4M]: ") or "4M"
@@ -69,6 +73,8 @@ def mirror_screen(device_manager, config):
     serial = device_manager.get_current_device()
     if not serial:
         return
+    if not device_manager.require_authorized_device():
+        return
     scrcpy_path = config.get('scrcpy_path', 'scrcpy')
     try:
         subprocess.run([scrcpy_path, "-s", serial])
@@ -78,8 +84,9 @@ def mirror_screen(device_manager, config):
 
 def create_gif(device_manager, adb, config):
     serial = device_manager.get_current_device()
-    if not serial:
+    if not serial or not device_manager.require_authorized_device(serial):
         return
+    audit_logger.info("media.create_gif start serial=%s", serial)
     duration = input("Dauer in Sekunden: ")
     if not duration:
         return

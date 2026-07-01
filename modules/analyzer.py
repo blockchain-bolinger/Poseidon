@@ -24,7 +24,13 @@ def monitor_app_files(adb, serial):
     print(f"{fg.CYAN}Überwache Datei-Events für {pkg}... (Strg+C zum Stoppen){style.RESET}")
     # Nutzt logcat, um File-Zugriffe zu "sniffen" (kann je nach App-Verhalten variieren)
     try:
-        for line in adb.run_shell_stream(f"logcat | grep '{pkg}'", serial):
+        for line in adb.run_shell_stream(
+            f"logcat | grep '{pkg}'",
+            serial,
+            max_duration_s=300,
+            max_lines=5000,
+            heartbeat="analyzer_app_spy",
+        ):
             print(line.strip())
     except KeyboardInterrupt:
         print(f"\n{fg.YELLOW}App-Spion gestoppt.{style.RESET}")

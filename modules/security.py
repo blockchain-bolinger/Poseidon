@@ -50,7 +50,7 @@ def show_menu(device_manager, adb):
         elif choice == 5:
             console.print("[cyan]Sniffing Kernel Events... (Ctrl+C to stop)[/]")
             try:
-                for line in adb.run_shell_stream("dmesg -w", serial):
+                for line in adb.run_shell_stream("dmesg -w", serial, max_duration_s=120, max_lines=2000, heartbeat="dmesg_sniffer"):
                     console.print(line.strip())
             except KeyboardInterrupt:
                 console.print("\n[yellow]Sniffer gestoppt.[/]")

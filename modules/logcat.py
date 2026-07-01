@@ -43,7 +43,7 @@ def logcat_live(device_manager, adb):
     
     try:
         # Verwende threadtime für strukturiertere Timestamps und PIDs
-        for line in adb.run_shell_stream("logcat -v threadtime", serial):
+        for line in adb.run_shell_stream("logcat -v threadtime", serial, max_duration_s=300, max_lines=5000, heartbeat="logcat_live"):
             line = line.strip()
             if not line:
                 continue

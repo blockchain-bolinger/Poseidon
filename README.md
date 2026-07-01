@@ -44,11 +44,14 @@ Poseidon/
 ├── core/                  # Core-Klassen (ADB, Plugins, Logger)
 ├── modules/               # TUI-Feature-Module (Security, Apps, System, etc.)
 ├── services/              # Kern-Services (Vision/OCR, Monitoring)
-├── plugins/               # Zusatz-Plugins (Debloater, App-Launcher, Wi-Fi, etc.)
+├── plugins/               # Zusatz-Plugins (Debloater, App-Launcher, Wi-Fi etc.)
 ├── utils/                 # Utilities (UI-Helper, i18n, Dependency-Check, Farben)
-├── scripts/               # Test- & Hilfsskripte (smoke_test.sh)
+├── tests/                 # pytest-Tests für AppContext und Grundfunktionen
+├── scripts/               # Test- & Hilfsskripte
 ├── setup.sh               # Installationsskript für System-Abhängigkeiten
-└── Dockerfile             # Docker-Umgebung zur plattformunabhängigen Ausführung
+├── TESTING.md             # Testanleitung
+├── Dockerfile             # Docker-Umgebung zur plattformunabhängigen Ausführung
+└── config.json            # Betriebseinstellungen (Pfade, Recording, etc.)
 ```
 
 ---
@@ -99,11 +102,11 @@ python3 cli.py vision tap-text "WLAN" --force --json
 ```
 
 ### 🌐 3. Web-Dashboard & Remote Controller
-Starte die Weboberfläche auf deinem PC (erreichbar unter `http://localhost:8000`):
+Starte die Weboberfläche (standardmäßig auf `http://localhost:8000`):
 ```bash
 python3 web_ui.py
 ```
-*(Dank der integrierten `0.0.0.0`-Bindung kannst du über eine **Tailscale**-Verbindung auch direkt vom Handy-Browser auf das Interface deines PCs zugreifen!)*
+Für externen Zugriff, z.B. über Tailscale oder WLAN, läuft der Server jetzt auf `0.0.0.0` und ist damit im Netzwerk erreichbar. Nutze dennoch HTTPS/Reverse-Proxy und eine Token-Absicherung, wenn du den Dienst außerhalb von localhost betreibst.
 
 ### 🐳 4. Docker-Container
 ```bash

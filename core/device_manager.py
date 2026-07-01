@@ -3,69 +3,79 @@ from typing import List, Optional
 from core.logger import logger
 
 class DeviceManager:
-    def __init__(self, config=None):
-        """
-        Initialisiert den Gerätemanager.
-        :param config: Konfigurationsdikt (optional, für gerätespezifische Einstellungen)
-        """
+    def __init__(self, config=None, device_manager=None, adb=None):
         self.config = config if config is not None else {}
         self.current_serial = None
         self.devices = []
         self.device_config = {}
+        self._device_manager = device_manager
+        self._adb = adb
         logger.info("DeviceManager initialisiert.")
 
     def refresh_devices(self) -> List[str]:
-        """Aktualisiert die Liste der verbundenen Geräte."""
-        try:
-            result = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=5)
-            lines = result.stdout.splitlines()
-            devices = []
-            for line in lines[1:]:
-                if line.strip() and "device" in line and "offline" not in line:
-                    serial = line.split()[0]
-                    devices.append(serial)
-            self.devices = devices
-            logger.debug(f"Geräteliste aktualisiert: {devices}")
-            if self.current_serial and self.current_serial not in devices:
-                logger.warning(f"Zuvor ausgewähltes Gerät {self.current_serial} nicht mehr verbunden.")
-                self.current_serial = None
-            return devices
-        except Exception as e:
-            logger.error(f"Fehler beim Abrufen der Geräte: {e}")
+        if self._adb is None:
+            logger.debug("DeviceManager.refresh_devices fallback ohne ADBHandler.")
             return []
 
+        result = self._adb.run("devices", timeout=10)
+        if not result[2] == 0:
+            logger.warning("adb devices fehlgeschlagen.")
+            return []
+
+        devices = []
+        for line in result[0].splitlines()[1:]:
+            if line.strip() and "device" in line and "offline" not in line:
+                serial = line.split()[0]
+                devices.append(serial)
+
+        self.devices = devices
+        logger.debug(f"Geräteliste aktualisiert: {devices}")
+        if self.current_serial and self.current_serial not in devices:
+            logger.warning(f"Zuvor ausgewähltes Gerät {self.current_serial} nicht mehr verbunden.")
+            self.current_serial = None
+        return devices
+
     def select_device(self) -> Optional[str]:
-        """Zeigt eine Auswahl an Geräten und setzt das aktuelle Gerät."""
         devices = self.refresh_devices()
         if not devices:
             print("Keine Geräte gefunden.")
             return None
         if len(devices) == 1:
-            self.current_serial = devices[0]
-            print(f"Einziges Gerät ausgewählt: {self.current_serial}")
-            logger.info(f"Gerät automatisch ausgewählt: {self.current_serial}")
-        else:
-            print("Mehrere Geräte verfügbar:")
-            for i, serial in enumerate(devices):
-                print(f"{i+1}. {serial}")
-            try:
-                choice = int(input("Bitte wählen: ")) - 1
-                if 0 <= choice < len(devices):
-                    self.current_serial = devices[choice]
-                    logger.info(f"Gerät manuell ausgewählt: {self.current_serial}")
-                else:
-                    print("Ungültige Auswahl.")
-                    logger.warning(f"Ungültige Geräteauswahl getroffen (Index {choice+1}).")
-                    return None
-            except:
-                print("Ungültige Eingabe.")
-                logger.warning("Ungültige Eingabe bei Geräteauswahl.")
-                return None
+            serial = devices[0]
+            self.current_serial = serial
+            print(f"Einziges Gerät ausgewählt: {serial}")
+            logger.info("Gerät automatisch ausgewählt: %s", serial)
+            return serial
+        print("Mehrere Geräte verfügbar:")
+        for idx, serial in enumerate(devices, 1):
+            print(f"{idx}. {serial}")
+        try:
+            choice = int(input("Bitte wählen: ")) - 1
+            if 0 <= choice < len(devices):
+                serial = devices[choice]
+                self.current_serial = serial
+                logger.info("Gerät manuell ausgewählt: %s", serial)
+                return serial
+            print("Ungültige Auswahl.")
+            logger.warning("Ungültige Geräteauswahl getroffen (Index %s).", choice + 1)
+            return None
+        except Exception:
+            print("Ungültige Eingabe.")
+            logger.warning("Ungültige Eingabe bei Geräteauswahl.")
+            return None
 
-        # Gerätespezifische Konfiguration laden (falls vorhanden)
-        if self.config and "devices" in self.config and self.current_serial:
-            self.device_config = self.config["devices"].get(self.current_serial, {})
-        return self.current_serial
+    def require_authorized_device(self, serial: Optional[str] = None) -> bool:
+        serial = serial or self.get_current_device()
+        if not serial:
+            print("Kein Gerät ausgewählt.")
+            logger.warning("Autorisierungscheck: kein Gerät ausgewählt.")
+            return False
+        if serial in self.refresh_devices():
+            return True
+        self.current_serial = None
+        print("Gerät nicht mehr verbunden.")
+        logger.warning("Autorisierungscheck fehlgeschlagen für Serial %s.", serial)
+        return False
 
     def get_current_device(self) -> Optional[str]:
         """Gibt die Seriennummer des aktuell ausgewählten Geräts zurück."""

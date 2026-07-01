@@ -1,10 +1,22 @@
 from services.monitoring_service import MonitoringService
-from utils.ui_helpers import print_header, menu_prompt, wait_for_enter
+from services.monitoring_service import MonitoringService
+
+from core.app import AppContext
+
+CONTEXT = AppContext()
+
+def build_monitoring_service(config):
+    return MonitoringService(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        poseidon_version=config.get("version", "5.0-dev"),
+        export_dir=config.get("global", {}).get("log_path", "./logs"),
+    )
 
 
 def show_menu(device_manager, adb, config):
     export_dir = config.get("global", {}).get("log_path", "./logs")
-    service = MonitoringService(device_manager, adb, export_dir=export_dir)
+    service = build_monitoring_service(config)
 
     while True:
         print_header("Geräte-Monitoring", "Gerätemetriken mit Export")

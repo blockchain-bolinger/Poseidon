@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Tuple
 
+
 class PluginBase(ABC):
     """Abstrakte Basisklasse für alle Poseidon-Plugins."""
 
@@ -24,6 +25,11 @@ class PluginBase(ABC):
     def author(self) -> str:
         """Autor des Plugins."""
         return "Unbekannt"
+
+    @property
+    def destructive(self) -> bool:
+        """Gibt an, ob das Plugin destruktive Aktionen ausführen kann."""
+        return False
 
     @abstractmethod
     def run(self, device_manager: Any, adb: Any, config: Dict[str, Any]) -> None:

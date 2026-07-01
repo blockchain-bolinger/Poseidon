@@ -3,7 +3,7 @@ import pkgutil
 import inspect
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
-from utils.ui_helpers import print_header, menu_prompt, wait_for_enter
+from utils.ui_helpers import print_header, menu_prompt, wait_for_enter, confirm
 from core.plugin_base import PluginBase
 from core.logger import logger
 
@@ -77,6 +77,13 @@ class PluginManager:
             else:
                 callback = self.menu_entries[choice-1][1]
                 titel = self.menu_entries[choice-1][0]
+                plugin = self.plugins[choice-1]
+
+                if self._is_destructive(plugin) and not confirm(
+                    f"Dieses Plugin kann destruktive Aktionen ausführen: '{titel}'. Trotzdem fortsetzen?"
+                ):
+                    continue
+
                 logger.info(f"Plugin wird ausgeführt: {titel}")
                 try:
                     callback(device_manager, adb, config)
@@ -84,3 +91,11 @@ class PluginManager:
                     logger.error(f"Kritischer Fehler im Plugin {titel}: {e}")
                     print(f"Fehler im Plugin: {e}")
                     wait_for_enter()
+
+    def _is_destructive(self, plugin) -> bool:
+        try:
+            if hasattr(plugin, "destructive"):
+                return bool(plugin.destructive)
+        except Exception:
+            pass
+        return False

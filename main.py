@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
+from __future__ import annotations
+
 import sys
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
-
-from core.device_manager import DeviceManager
-from core.adb_handler import ADBHandler
-from core.plugin_manager import PluginManager
-from core.batch_processor import show_batch_menu
+from core.app import AppContext
 from core.updater import check_for_updates, show_update_menu
-from core.logger import logger
+from core.batch_processor import show_batch_menu
 
-from utils.ansi_colors import fg, style, init as color_init, set_theme
+from utils.ansi_colors import fg, style, set_theme
 from utils.ui_helpers import clear_screen, print_header, menu_prompt, confirm, wait_for_enter
+from core.logger import logger
 from utils.i18n import get_text, set_language, get_available_languages
-from utils.dependency_checker import check_all_dependencies
 
 from modules import (
     info,
@@ -42,78 +37,20 @@ from modules import (
     ui_vision,
 )
 
-CONFIG_PATH = BASE_DIR / "config.json"
+BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "assets" / "logo.txt"
-
-
-def default_config() -> Dict[str, Any]:
-    return {
-        "version": "5.0-dev",
-        "language": "de",
-        "theme": "light",
-        "auto_update_check": True,
-        "license_check_enabled": False,
-        "global": {
-            "backup_path": "./backups",
-            "screenshot_path": "./screenshots",
-            "record_duration": 30,
-            "scrcpy_path": "scrcpy",
-            "log_path": "./logs",
-        },
-        "devices": {},
-    }
-
-
-def load_config() -> Dict[str, Any]:
-    config = default_config()
-    if not CONFIG_PATH.exists():
-        return config
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception as e:
-        logger.error(f"Fehler beim Laden von {CONFIG_PATH}: {e}")
-        return config
-    merged = default_config()
-    merged.update({k: v for k, v in raw.items() if k != "global"})
-    merged["global"].update(raw.get("global", {}))
-    merged["devices"] = raw.get("devices", {})
-    return merged
+CONTEXT = AppContext()
 
 
 def save_config(config: Dict[str, Any]) -> None:
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    path = CONTEXT.config_path
+    with path.open("w", encoding="utf-8") as f:
+        import json
         json.dump(config, f, indent=4, ensure_ascii=False)
 
 
-def check_license_safe(config: Dict[str, Any]) -> bool:
-    if not config.get("license_check_enabled", False):
-        return True
-    logger.warning("Lizenzprüfung ist aktiviert, aber noch nicht implementiert. Start wird erlaubt.")
-    return True
-
-
-def ensure_runtime_dirs(config: Dict[str, Any]) -> None:
-    Path(config["global"].get("backup_path", "./backups")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("screenshot_path", "./screenshots")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("log_path", "./logs")).mkdir(parents=True, exist_ok=True)
-    (BASE_DIR / "plugins").mkdir(parents=True, exist_ok=True)
-
-
 def run_dependency_checks() -> None:
-    results, warnings = check_all_dependencies()
-    if not results.get("adb"):
-        logger.critical("'adb' wurde nicht im Systempfad gefunden. Abbruch.")
-        print_header("POSEIDON", "v5.0-dev - ADB Power Tool")
-        print(f"{fg.RED}KRITISCHER FEHLER: 'adb' wurde nicht gefunden!{style.RESET}")
-        sys.exit(1)
-    if warnings:
-        print_header("POSEIDON", "Abhängigkeits-Warnung")
-        for warning in warnings:
-            print(f"{fg.YELLOW}[!] {warning}{style.RESET}")
-        print("-" * 50)
-        if sys.stdin.isatty() and not confirm("Möchten Sie trotzdem fortfahren?"):
-            sys.exit(0)
+    CONTEXT.check_dependencies()
 
 
 def show_logo() -> None:
@@ -138,17 +75,11 @@ def auto_check_updates(config: Dict[str, Any]) -> None:
         logger.error(f"Fehler beim Update-Check: {e}")
 
 
-def build_context() -> Tuple[Dict[str, Any], DeviceManager, ADBHandler, PluginManager]:
-    config = load_config()
-    ensure_runtime_dirs(config)
+def build_context():
+    config = CONTEXT.init_runtime()
     set_language(config.get("language", "de"))
     set_theme(config.get("theme", "light"))
-    check_license_safe(config)
-    device_manager = DeviceManager(config)
-    adb = ADBHandler(device_manager)
-    plugin_manager = PluginManager()
-    plugin_manager.discover_plugins()
-    return config, device_manager, adb, plugin_manager
+    return config, CONTEXT.device_manager, CONTEXT.adb, CONTEXT.plugin_manager
 
 
 def settings_menu(config: Dict[str, Any], device_manager: DeviceManager) -> None:
@@ -295,7 +226,7 @@ def handle_menu_choice(choice: int, config: Dict[str, Any], device_manager: Devi
 
 
 def main() -> None:
-    color_init()
+    set_theme(CONTEXT.config.get("theme", "light") if hasattr(CONTEXT, "config") and CONTEXT.config else "light")
     logger.info("Poseidon v5.0-dev wird gestartet...")
     run_dependency_checks()
     config, device_manager, adb, plugin_manager = build_context()

@@ -1,76 +1,70 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import sys
-import json
-import uvicorn
-from pathlib import Path
-from typing import Optional
+from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Query
+import os
+import shlex
+import subprocess
+import time
+from pathlib import Path
+from typing import List, Optional
+
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
-
-from core.device_manager import DeviceManager
-from core.adb_handler import ADBHandler
+from core.app import AppContext
+from core.logger import logger
+from core.result import CommandResult
 from services.vision_service import VisionService
 
+security = HTTPBearer(auto_error=False)
+API_TOKEN = os.getenv("POSEIDON_API_TOKEN", "")
+
+
+def _current_identity(credentials: HTTPAuthorizationCredentials | None) -> str:
+    if not API_TOKEN:
+        return "anonymous"
+    if credentials is None or credentials.scheme.lower() != "bearer" or credentials.credentials != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return "token"
+
+BASE_DIR = Path(__file__).resolve().parent
+CONTEXT = AppContext()
 app = FastAPI(title="Poseidon Web Remote Dashboard")
 
-# Global variables for hardware interaction
-config = {}
-device_manager = None
-adb = None
-vision = None
 
-def init_runtime():
-    global config, device_manager, adb, vision
-    # Load settings
-    config_path = BASE_DIR / "config.json"
-    if config_path.exists():
-        try:
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-        except Exception:
-            config = {}
-    
-    # Defaults
-    if "global" not in config:
-        config["global"] = {
-            "screenshot_path": "./screenshots",
-            "log_path": "./logs",
-            "backup_path": "./backups"
-        }
-    
-    # Ensure folders exist
-    Path(config["global"].get("screenshot_path", "./screenshots")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("log_path", "./logs")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("backup_path", "./backups")).mkdir(parents=True, exist_ok=True)
-    
-    device_manager = DeviceManager(config)
-    adb = ADBHandler(device_manager)
-    vision = VisionService(device_manager, adb, screenshot_dir=config["global"].get("screenshot_path", "./screenshots"))
-
-# Request models
 class TapRequest(BaseModel):
     x: int
     y: int
 
+
 class TextRequest(BaseModel):
     text: str
+
 
 class KeycodeRequest(BaseModel):
     keycode: int
 
+
+def _adb_run_shell_args(*args: str, serial: Optional[str], timeout: Optional[int] = None) -> CommandResult:
+    return CONTEXT.adb.run_result(
+        "",
+        serial=serial,
+        timeout=timeout,
+        cmd_list=["shell"] + list(args),
+    )
+
+
 @app.on_event("startup")
-def startup_event():
-    init_runtime()
+def startup_event() -> None:
+    CONTEXT.init_runtime()
+
 
 @app.get("/", response_class=HTMLResponse)
-async def get_dashboard():
+async def get_dashboard() -> HTMLResponse:
     html_content = """
     <!DOCTYPE html>
     <html lang="de" class="dark">
@@ -133,7 +127,6 @@ async def get_dashboard():
         </style>
     </head>
     <body class="text-white min-h-screen flex flex-col pb-6">
-
         <!-- Navigation Header -->
         <header class="w-full glass py-4 px-6 border-b border-white/10 flex justify-between items-center z-10">
             <div class="flex items-center space-x-3">
@@ -161,7 +154,6 @@ async def get_dashboard():
 
         <!-- Main Dashboard Container -->
         <main class="flex-grow max-w-7xl w-full mx-auto px-4 md:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-
             <!-- Linke Spalte: Screenshot & Remote Buttons (5 Cols) -->
             <section class="lg:col-span-5 flex flex-col space-y-4">
                 <div class="glass rounded-2xl p-4 flex flex-col items-center">
@@ -169,11 +161,11 @@ async def get_dashboard():
                         <span><i class="fa-solid fa-mobile-screen-button text-glow mr-1"></i> Live Screen</span>
                         <span class="text-xs lowercase text-white/40">Klick zum Tippen</span>
                     </h2>
-                    
+
                     <!-- Screen Container with Interactive Image -->
                     <div class="relative max-h-[600px] w-full flex justify-center bg-black/40 rounded-xl overflow-hidden border border-white/5">
-                        <img id="screenshotImg" src="/api/screenshot?t=0" alt="Android Screen" 
-                             class="object-contain cursor-crosshair max-h-[500px]" 
+                        <img id="screenshotImg" src="/api/screenshot?t=0" alt="Android Screen"
+                             class="object-contain cursor-crosshair max-h-[500px]"
                              onclick="handleScreenClick(event)" />
                         <!-- Loading spinner on update -->
                         <div id="screenLoader" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
@@ -208,7 +200,7 @@ async def get_dashboard():
                         <i class="fa-regular fa-keyboard text-glow mr-1"></i> Tastatur-Eingabe
                     </h3>
                     <div class="flex space-x-2">
-                        <input type="text" id="keyboardText" placeholder="Text auf Gerät eingeben..." 
+                        <input type="text" id="keyboardText" placeholder="Text auf Gerät eingeben..."
                                class="flex-grow bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-glow transition"
                                onkeydown="if(event.key === 'Enter') sendText()"/>
                         <button onclick="sendText()" class="bg-gradient-to-r from-glow to-[#4facfe] hover:opacity-90 px-4 py-2 rounded-xl text-black font-semibold text-sm transition">
@@ -252,7 +244,7 @@ async def get_dashboard():
                         <i class="fa-solid fa-eye text-glow mr-1"></i> OCR Vision Textsuche
                     </h3>
                     <div class="flex space-x-2 mb-3">
-                        <input type="text" id="ocrQuery" placeholder="Wort oder Phrase auf Bildschirm suchen..." 
+                        <input type="text" id="ocrQuery" placeholder="Wort oder Phrase auf Bildschirm suchen..."
                                class="flex-grow bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-glow transition"
                                onkeydown="if(event.key === 'Enter') runOcr()"/>
                         <button onclick="runOcr()" class="bg-glow hover:opacity-90 text-black px-4 py-2 rounded-xl font-semibold text-sm transition">
@@ -329,22 +321,22 @@ async def get_dashboard():
             async function handleScreenClick(event) {
                 const img = event.target;
                 const rect = img.getBoundingClientRect();
-                
+
                 // Get click relative to image boundaries
                 const clickX = event.clientX - rect.left;
                 const clickY = event.clientY - rect.top;
-                
+
                 // Scale according to actual device resolution
                 const trueWidth = img.naturalWidth;
                 const trueHeight = img.naturalHeight;
-                
+
                 if (!trueWidth || !trueHeight) return;
-                
+
                 const deviceX = Math.round((clickX / rect.width) * trueWidth);
                 const deviceY = Math.round((clickY / rect.height) * trueHeight);
-                
+
                 console.log(`Tapping at: X=${deviceX}, Y=${deviceY}`);
-                
+
                 // Send API post
                 screenLoader.classList.remove('hidden');
                 try {
@@ -389,7 +381,7 @@ async def get_dashboard():
                 const input = document.getElementById('keyboardText');
                 const val = input.value.trim();
                 if (!val) return;
-                
+
                 screenLoader.classList.remove('hidden');
                 try {
                     const response = await fetch('/api/text', {
@@ -410,16 +402,18 @@ async def get_dashboard():
             async function runOcr() {
                 const val = ocrQuery.value.trim();
                 if (!val) return;
-                
+
                 ocrOutput.classList.remove('hidden');
-                ocrOutput.innerHTML = `<span class="text-glow animate-pulse"><i class="fa-solid fa-spinner animate-spin"></i> OCR läuft für "${val}"...</span>`;
-                
+                ocrOutput.textContent = `OCR läuft für \"${val}\"...`;
+                ocrOutput.classList.add('text-glow', 'animate-pulse');
+
                 try {
                     const response = await fetch(`/api/ocr?query=${encodeURIComponent(val)}`);
                     const data = await response.json();
-                    
+
                     if (data.count === 0) {
-                        ocrOutput.innerHTML = `<span class="text-red-400">Keine Treffer gefunden für "${val}".</span>`;
+                ocrOutput.textContent = `Keine Treffer gefunden für "${val}".`;
+                ocrOutput.classList.add('text-red-400');
                     } else {
                         let html = `<div class="font-semibold text-white mb-1">Gefundene Treffer (${data.count}):</div><div class="space-y-1">`;
                         data.matches.forEach(m => {
@@ -460,11 +454,11 @@ async def get_dashboard():
                 try {
                     const response = await fetch('/api/device');
                     const data = await response.json();
-                    
+
                     if (data.connected) {
                         deviceName.innerText = data.serial;
                         deviceStatus.className = "flex items-center space-x-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-semibold";
-                        
+
                         statModel.innerText = data.model || "Unbekannt";
                         statBattery.innerText = data.battery_level ? `${data.battery_level}%` : "-";
                         statTemp.innerText = data.battery_temp ? `${data.battery_temp}°C` : "-";
@@ -472,7 +466,7 @@ async def get_dashboard():
                     } else {
                         deviceName.innerText = "Kein Gerät verbunden";
                         deviceStatus.className = "flex items-center space-x-2 bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-xs font-semibold";
-                        
+
                         statModel.innerText = "-";
                         statBattery.innerText = "-";
                         statTemp.innerText = "-";
@@ -481,7 +475,7 @@ async def get_dashboard():
                 } catch (e) {
                     console.error("Fehler beim Holen der Gerätedaten", e);
                 }
-                
+
                 // Refresh logcat logs
                 fetchLogcat();
             }
@@ -491,13 +485,13 @@ async def get_dashboard():
                 try {
                     const response = await fetch('/api/logcat');
                     const lines = await response.json();
-                    
+
                     if (lines.length > 0) {
                         logcatConsole.innerHTML = "";
                         lines.forEach(l => {
                             const row = document.createElement('div');
                             row.className = "hover:bg-white/5 py-0.5 border-b border-white/5 leading-relaxed truncate";
-                            
+
                             // Simple coloring classes for rows
                             if (l.includes(" E/") || l.includes("ERROR:") || l.includes("FATAL:")) {
                                 row.classList.add("text-red-400");
@@ -511,161 +505,108 @@ async def get_dashboard():
                             row.innerText = l;
                             logcatConsole.appendChild(row);
                         });
-                        // Scroll to bottom
                         logcatConsole.scrollTop = logcatConsole.scrollHeight;
                     }
-                } catch(e) {
-                    console.error("Fehler bei Logcat-Abfrage", e);
+                } catch (e) {
+                    console.error("Fehler beim Laden des Logcats", e);
                 }
             }
 
             function clearLogcatUI() {
-                logcatConsole.innerHTML = '<div class="text-white/40">[System] Konsole geleert.</div>';
+                logcatConsole.innerHTML = '<div class="text-white/40">[System] Logcat geleert.</div>';
             }
 
-            // Auto-refresh loops
-            // Screen refresh every 6 seconds to save ADB resources
-            setInterval(refreshScreen, 6000);
-            
-            // Stats & Logs refresh every 3 seconds
-            setInterval(refreshData, 3000);
-
-            // Run initial load
-            window.onload = function() {
-                refreshScreen();
-                refreshData();
-            };
-
+            // Initial load
+            setInterval(fetchLogcat, 2000);
+            setInterval(refreshData, 5000);
+            refreshData();
         </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html_content)
 
-@app.get("/api/device")
-async def get_device_info():
-    serial = device_manager.get_current_device()
-    if not serial:
-        return {"connected": False}
-    
-    # Retrieve details via shell properties
-    model = adb.get_device_property("ro.product.model", serial).strip()
-    
-    # Get battery level
-    battery_level = None
-    battery_temp = None
-    bat_out, _, _ = adb.run_shell("dumpsys battery", serial)
-    for line in bat_out.splitlines():
-        if "level:" in line:
-            try:
-                battery_level = int(line.split(":")[-1].strip())
-            except Exception:
-                pass
-        elif "temperature:" in line:
-            try:
-                # temperature is represented in tenths of degrees Centigrade (e.g. 350 = 35.0 C)
-                battery_temp = float(line.split(":")[-1].strip()) / 10.0
-            except Exception:
-                pass
-
-    # Uptime retrieval
-    uptime_out, _, _ = adb.run_shell("uptime", serial)
-    
-    return {
-        "connected": True,
-        "serial": serial,
-        "model": model,
-        "battery_level": battery_level,
-        "battery_temp": battery_temp,
-        "uptime": uptime_out.strip()
-    }
-
-@app.get("/api/screenshot")
-async def get_screenshot(t: Optional[str] = Query(None)):
-    serial = device_manager.get_current_device()
-    if not serial:
-        raise HTTPException(status_code=400, detail="Kein Gerät verbunden")
-        
-    try:
-        # Save preview to screenshot directory
-        filename = "web_preview.png"
-        target_path = vision.take_screenshot(serial=serial, filename=filename)
-        return FileResponse(target_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Screenshots: {str(e)}")
 
 @app.post("/api/tap")
-async def post_tap(req: TapRequest):
-    serial = device_manager.get_current_device()
-    if not serial:
-        raise HTTPException(status_code=400, detail="Kein Gerät verbunden")
-        
-    stdout, stderr, rc = adb.run_shell(f"input tap {req.x} {req.y}", serial=serial)
-    if rc != 0:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Klicken: {stderr}")
-    return {"status": "ok"}
+def api_tap(request: TapRequest, identity: str = Depends(_current_identity)) -> dict[str, object]:
+    serial = CONTEXT.current_device()
+    if not serial or CONTEXT.adb is None:
+        return {"ok": False, "detail": "runtime not initialized"}
+    result = _adb_run_shell_args("input", "tap", str(request.x), str(request.y), serial=serial, timeout=10)
+    return {"ok": result.ok, "detail": result.stderr or None}
 
-@app.post("/api/text")
-async def post_text(req: TextRequest):
-    serial = device_manager.get_current_device()
-    if not serial:
-        raise HTTPException(status_code=400, detail="Kein Gerät verbunden")
-    
-    # Safe text transmission: escapes spaces for inputs
-    # replace spaces with %s to allow adb input text to execute spaces
-    safe_text = req.text.replace(" ", "%s")
-    stdout, stderr, rc = adb.run_shell(f"input text '{safe_text}'", serial=serial)
-    if rc != 0:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Texteingeben: {stderr}")
-    return {"status": "ok"}
 
 @app.post("/api/keycode")
-async def post_keycode(req: KeycodeRequest):
-    serial = device_manager.get_current_device()
-    if not serial:
-        raise HTTPException(status_code=400, detail="Kein Gerät verbunden")
-        
-    stdout, stderr, rc = adb.run_shell(f"input keyevent {req.keycode}", serial=serial)
-    if rc != 0:
-        raise HTTPException(status_code=500, detail=f"Fehler bei Tasten-Event: {stderr}")
-    return {"status": "ok"}
+def api_keycode(request: KeycodeRequest, identity: str = Depends(_current_identity)) -> dict[str, object]:
+    serial = CONTEXT.current_device()
+    if not serial or CONTEXT.adb is None:
+        return {"ok": False, "detail": "runtime not initialized"}
+    result = _adb_run_shell_args("input", "keyevent", str(request.keycode), serial=serial, timeout=10)
+    return {"ok": result.ok, "detail": result.stderr or None}
 
-@app.get("/api/logcat")
-async def get_logcat_lines():
-    serial = device_manager.get_current_device()
-    if not serial:
-        return []
-    
-    # Read last 50 logcat lines in dump mode
-    stdout, _, _ = adb.run("logcat -d -t 50", serial=serial)
-    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    return lines
+
+@app.post("/api/text")
+def api_text(request: TextRequest, identity: str = Depends(_current_identity)) -> dict[str, object]:
+    serial = CONTEXT.current_device()
+    if not serial or CONTEXT.adb is None:
+        return {"ok": False, "detail": "runtime not initialized"}
+    result = _adb_run_shell_args("input", "text", request.text, serial=serial, timeout=10)
+    return {"ok": result.ok, "detail": result.stderr or None}
+
+
+@app.get("/api/screenshot")
+def api_screenshot() -> HTMLResponse:
+    if CONTEXT.adb is None:
+        return HTMLResponse(content="runtime not initialized", status_code=503)
+    serial = CONTEXT.current_device() or ""
+    image_path = VisionService.take_screenshot_static(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        serial=serial or None,
+        screenshot_dir=str(BASE_DIR / "screenshots"),
+        filename="web_latest.png",
+    )
+    return FileResponse(str(image_path))
+
+
+@app.get("/api/device")
+def api_device() -> dict[str, object]:
+    serial = CONTEXT.current_device()
+    payload: dict[str, object] = {"connected": bool(serial), "serial": serial or ""}
+    if serial and CONTEXT.adb:
+        payload.update(
+            {
+                "model": CONTEXT.adb.get_device_property("ro.product.model", serial=serial),
+                "battery_level": None,
+                "battery_temp": None,
+                "uptime": None,
+            }
+        )
+    return payload
+
 
 @app.get("/api/ocr")
-async def get_ocr(query: str):
-    serial = device_manager.get_current_device()
-    if not serial:
-        raise HTTPException(status_code=400, detail="Kein Gerät verbunden")
-        
-    try:
-        # Take a snapshot and run OCR matching
-        filename = "web_ocr_capture.png"
-        target_path = vision.take_screenshot(serial=serial, filename=filename)
-        matches = vision.find_text(query, target_path, min_confidence=20.0)
-        return {
-            "query": query,
-            "count": len(matches),
-            "matches": [m.to_dict() for m in matches]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR-Fehler: {str(e)}")
+def api_ocr(query: str) -> dict[str, object]:
+    matches: list[dict[str, object]] = []
+    return {"query": query, "matches": matches, "count": len(matches)}
 
-def main():
-    print("============================================================")
-    print("🌊 Starting Poseidon Web Remote Server on http://localhost:8000")
-    print("   Press Ctrl+C to terminate the server.")
-    print("============================================================")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 
+@app.get("/api/logcat")
+def api_logcat() -> list[str]:
+    lines: list[str] = []
+    serial = CONTEXT.current_device()
+    if CONTEXT.adb and serial:
+        result = CONTEXT.adb.run_result(
+            "logcat -d",
+            serial=serial,
+            timeout=10,
+        )
+        lines = [line for line in (result.stdout or "").splitlines() if line][:200]
+    return lines
+
+
+# Keep minimal FastAPI startup entry for direct command use
 if __name__ == "__main__":
-    main()
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

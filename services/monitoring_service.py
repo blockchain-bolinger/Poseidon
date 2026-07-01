@@ -14,6 +14,7 @@ from core.logger import logger
 
 @dataclass
 class DeviceMetrics:
+    poseidon_version: str
     timestamp: str
     serial: str
     battery_level: Optional[int] = None
@@ -27,11 +28,10 @@ class DeviceMetrics:
 
 
 class MonitoringService:
-    """Monitoring-Service mit Snapshot-Erfassung und Exportfunktionen."""
-
-    def __init__(self, device_manager: DeviceManager, adb: ADBHandler, export_dir: str = "./logs"):
+    def __init__(self, device_manager: DeviceManager, adb: ADBHandler, poseidon_version: str = "5.0-dev", export_dir: str = "./logs"):
         self.device_manager = device_manager
         self.adb = adb
+        self.poseidon_version = poseidon_version
         self.export_dir = Path(export_dir)
         self.export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -39,8 +39,8 @@ class MonitoringService:
         serial = serial or self.device_manager.get_current_device() or "unknown"
         battery_dump = self._read_battery_dump(serial)
         memory_dump = self._read_meminfo(serial)
-
         metrics = DeviceMetrics(
+            poseidon_version=self.poseidon_version,
             timestamp=datetime.now(timezone.utc).isoformat(),
             serial=serial,
             battery_level=self._parse_battery_level(battery_dump),
@@ -49,27 +49,26 @@ class MonitoringService:
             memory_free_mb=self._parse_memory(memory_dump)[1],
             cpu_load=self._read_cpu_load(serial),
         )
-        logger.debug(f"MonitoringService metrics: {metrics.to_dict()}")
+        logger.debug("MonitoringService metrics: %s", metrics.to_dict())
         return metrics
-
 
     def export_jsonl(self, metrics: DeviceMetrics, filename: str = "poseidon_metrics.jsonl") -> Path:
         target = self.export_dir / filename
-        with open(target, "a", encoding="utf-8") as f:
+        with target.open("a", encoding="utf-8") as f:
             f.write(json.dumps(metrics.to_dict(), ensure_ascii=False) + "\n")
-        logger.info(f"JSONL export geschrieben: {target}")
+        logger.info("JSONL export geschrieben: %s", target)
         return target
 
     def export_csv(self, metrics: DeviceMetrics, filename: str = "poseidon_metrics.csv") -> Path:
         target = self.export_dir / filename
         row = metrics.to_dict()
         write_header = not target.exists()
-        with open(target, "a", encoding="utf-8", newline="") as f:
+        with target.open("a", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(row.keys()))
             if write_header:
                 writer.writeheader()
             writer.writerow(row)
-        logger.info(f"CSV export geschrieben: {target}")
+        logger.info("CSV export geschrieben: %s", target)
         return target
 
     def _read_battery_dump(self, serial: str) -> str:
