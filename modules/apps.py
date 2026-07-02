@@ -215,6 +215,6 @@ def open_playstore(device_manager, adb):
     package = input(get_text("enter_package"))
     if not package:
         return
-    adb.run_shell(f"am start -a android.intent.action.VIEW -d market://details?id={package}", serial)
+    adb.run_shell(f"am start -a android.intent.action.VIEW -d 'market://details?id={package}'", serial)
     print("Play Store should open.")
     wait_for_enter()

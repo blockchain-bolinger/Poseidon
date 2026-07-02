@@ -15,6 +15,9 @@ from utils.ansi_colors import fg, style, set_theme
 from utils.ui_helpers import clear_screen, print_header, menu_prompt, confirm, wait_for_enter
 from core.logger import logger
 from utils.i18n import get_text, set_language, get_available_languages
+from core.device_manager import DeviceManager
+from core.adb_handler import ADBHandler
+from core.plugin_manager import PluginManager
 
 from modules import (
     info,
@@ -36,6 +39,10 @@ from modules import (
     monitoring,
     ui_vision,
 )
+
+from plugins.phonesploit_pro import PhoneSploitProPlugin
+from plugins.androidhack_backdoor import AndroidHackBackdoorPlugin
+from plugins.androrat import AndroRATPlugin
 
 BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "assets" / "logo.txt"
@@ -170,6 +177,9 @@ def render_main_menu(device_manager: DeviceManager) -> None:
     print("20. 🕵️ " + get_text("menu_analyzer"))
     print("21. 📈 Monitoring v2")
     print("22. 👁️ Vision / OCR v2")
+    print("23. 📡 PhoneSploit Pro")
+    print("24. 🔐 AndroidHack BackDoor")
+    print("25. 🕵️ AndroRAT")
     print(" 0. ❌ " + get_text("exit"))
 
 
@@ -222,10 +232,20 @@ def handle_menu_choice(choice: int, config: Dict[str, Any], device_manager: Devi
         monitoring.show_menu(device_manager, adb, config)
     elif choice == 22:
         ui_vision.show_menu(device_manager, adb, config)
+    elif choice == 23:
+        plugin_manager.run_plugin_by_class(PhoneSploitProPlugin, device_manager, adb, config)
+    elif choice == 24:
+        plugin_manager.run_plugin_by_class(AndroidHackBackdoorPlugin, device_manager, adb, config)
+    elif choice == 25:
+        plugin_manager.run_plugin_by_class(AndroRATPlugin, device_manager, adb, config)
     return True
 
 
 def main() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     set_theme(CONTEXT.config.get("theme", "light") if hasattr(CONTEXT, "config") and CONTEXT.config else "light")
     logger.info("Poseidon v5.0-dev wird gestartet...")
     run_dependency_checks()
@@ -235,12 +255,16 @@ def main() -> None:
     running = True
     while running:
         render_main_menu(device_manager)
-        choice = menu_prompt(get_text("choose_category"), range(0, 23))
+        choice = menu_prompt(get_text("choose_category"), range(0, 26))
         running = handle_menu_choice(choice, config, device_manager, adb, plugin_manager)
 
 
 if __name__ == "__main__":
     try:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
         main()
     except KeyboardInterrupt:
         print(f"\n{fg.YELLOW}{get_text('aborted')}{style.RESET}")

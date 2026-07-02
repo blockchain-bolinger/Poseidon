@@ -4,6 +4,7 @@ from rich.console import Console
 from rich.text import Text
 from utils.ui_helpers import clear_screen, print_header, menu_prompt, wait_for_enter, confirm
 from utils.file_utils import get_timestamp, save_file
+from utils.cli_safety import sanitize_device_input
 
 console = Console()
 
@@ -129,7 +130,12 @@ def logcat_filter(device_manager, adb):
     tag = input("Nach welchem Schlagwort filtern? ")
     if not tag:
         return
-    out, _, _ = adb.run(f"logcat -d | grep -i {tag}", serial)
+    safe_tag = sanitize_device_input("tag", tag)
+    if not safe_tag:
+        print("Ungültiges Schlagwort.")
+        wait_for_enter()
+        return
+    out, _, _ = adb.run(f"logcat -d | grep -i {safe_tag}", serial)
     print(out)
     wait_for_enter()
 

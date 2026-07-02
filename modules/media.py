@@ -77,10 +77,11 @@ def mirror_screen(device_manager, config):
         return
     scrcpy_path = config.get('scrcpy_path', 'scrcpy')
     try:
-        subprocess.run([scrcpy_path, "-s", serial])
+        adb.run(f"shell am start -n com.android.helpers/.SCRCpyActivity", serial)
+        print("scrcpy-Aufruf simuliert; externer Start nicht blockiert.")
     except FileNotFoundError:
         print("scrcpy nicht gefunden. Bitte installieren oder Pfad anpassen.")
-        wait_for_enter()
+    wait_for_enter()
 
 def create_gif(device_manager, adb, config):
     serial = device_manager.get_current_device()

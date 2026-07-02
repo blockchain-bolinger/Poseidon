@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse, FileResponse
@@ -19,6 +21,10 @@ from core.app import AppContext
 from core.logger import logger
 from core.result import CommandResult
 from services.vision_service import VisionService
+from plugins.ai_agent_plugin import AIAgentPlugin, PoseidonAgent
+from plugins.phonesploit_pro import PhoneSploitProPlugin
+from plugins.androidhack_backdoor import AndroidHackBackdoorPlugin
+from plugins.androrat import AndroRATPlugin
 
 security = HTTPBearer(auto_error=False)
 API_TOKEN = os.getenv("POSEIDON_API_TOKEN", "")
@@ -31,15 +37,43 @@ def _current_identity(credentials: HTTPAuthorizationCredentials | None) -> str:
         raise HTTPException(status_code=401, detail="Invalid token")
     return "token"
 
+
+class _UTF8LoggingStream:
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, data):
+        if isinstance(data, str):
+            return self._stream.buffer.write(data.encode("utf-8", "replace").decode("utf-8", "replace").encode("utf-8", "replace"))
+        return self._stream.buffer.write(data)
+
+    def flush(self):
+        return self._stream.flush()
+
+
+@asynccontextmanager
+async def app_lifespan(application: FastAPI):
+    import sys
+
+    if sys.getdefaultencoding() or "utf-8" != "utf-8":
+        replacement = __import__("io").TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+        sys.stdout = replacement
+        sys.stderr = replacement
+
+    CONTEXT.init_runtime()
+    try:
+        yield
+    finally:
+        if CONTEXT.adb is not None:
+            try:
+                CONTEXT.adb.kill_server()
+            except Exception:
+                pass
+
+
 BASE_DIR = Path(__file__).resolve().parent
 CONTEXT = AppContext()
-app = FastAPI(title="Poseidon Web Remote Dashboard")
-
-
-class TapRequest(BaseModel):
-    x: int
-    y: int
-
+app = FastAPI(title="Poseidon Web Remote Dashboard", lifespan=app_lifespan)
 
 class TextRequest(BaseModel):
     text: str
@@ -57,10 +91,6 @@ def _adb_run_shell_args(*args: str, serial: Optional[str], timeout: Optional[int
         cmd_list=["shell"] + list(args),
     )
 
-
-@app.on_event("startup")
-def startup_event() -> None:
-    CONTEXT.init_runtime()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -238,6 +268,68 @@ async def get_dashboard() -> HTMLResponse:
                     </div>
                 </div>
 
+                <!-- Audit / Recon Card -->
+                <div class="glass rounded-2xl p-5">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-white/50">
+                            <i class="fa-solid fa-shield-halved text-glow mr-1"></i> Audit / Recon
+                        </h3>
+                        <div class="flex space-x-2">
+                            <button onclick="runCveAudit()" class="glass hover:bg-white/10 px-3 py-1.5 rounded-xl text-xs transition">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-300 mr-1"></i> CVE Scan
+                            </button>
+                            <button onclick="runIntentMap()" class="glass hover:bg-white/10 px-3 py-1.5 rounded-xl text-xs transition">
+                                <i class="fa-solid fa-sitemap text-glow mr-1"></i> IntentMapper
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="bg-black/30 rounded-xl p-3 border border-white/5">
+                            <div class="text-xs text-white/40 mb-1">CVE/Device-Audit</div>
+                            <div id="auditCveStatus" class="text-xs text-white/60">Noch nicht gestartet.</div>
+                            <pre id="auditCveOutput" class="text-[11px] text-white/80 mt-2 whitespace-pre-wrap hidden"></pre>
+                        </div>
+                        <div class="bg-black/30 rounded-xl p-3 border border-white/5">
+                            <div class="text-xs text-white/40 mb-1">IntentMapper</div>
+                            <div class="flex items-center space-x-2 mb-2">
+                                <input type="text" id="intentKeyword" placeholder="Keyword optional" class="flex-grow bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-glow transition" onkeydown="if(event.key === 'Enter') runIntentMap()"/>
+                                <button onclick="runIntentMap()" class="glass hover:bg-white/10 px-3 py-1.5 rounded-xl text-xs transition">Scan</button>
+                            </div>
+                            <div id="auditIntentStatus" class="text-xs text-white/60">Noch nicht gestartet.</div>
+                            <pre id="auditIntentOutput" class="text-[11px] text-white/80 mt-2 whitespace-pre-wrap hidden"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Agent Modulkarten -->
+                <div class="glass rounded-2xl p-5">
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-white/50 mb-4">
+                        <i class="fa-solid fa-robot text-glow mr-1"></i> KI-Agent Module
+                    </h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <button onclick="runAgent('phonesploit_pro')" class="glass hover:bg-white/10 px-3 py-3 rounded-xl text-xs transition glow-effect">
+                            📡 PhoneSploit Pro
+                        </button>
+                        <button onclick="runAgent('androidhack_backdoor')" class="glass hover:bg-white/10 px-3 py-3 rounded-xl text-xs transition glow-effect">
+                            🔐 AndroidHack BackDoor
+                        </button>
+                        <button onclick="runAgent('androrat')" class="glass hover:bg-white/10 px-3 py-3 rounded-xl text-xs transition glow-effect">
+                            🕵️ AndroRAT
+                        </button>
+                        <button onclick="runAgent('cve_scan')" class="glass hover:bg-white/10 px-3 py-3 rounded-xl text-xs transition">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-300 mr-1"></i> CVE Scan
+                        </button>
+                        <button onclick="runAgent('intent_map')" class="glass hover:bg-white/10 px-3 py-3 rounded-xl text-xs transition">
+                            <i class="fa-solid fa-sitemap text-glow mr-1"></i> IntentMapper
+                        </button>
+                        <button onclick="runAgent('debloat_scan')" class="glass hover:bg-white/10 px-3 py-3 rounded-xl text-xs transition">
+                            🚫 Bloatware Scan
+                        </button>
+                    </div>
+                    <div id="agentStatus" class="text-xs text-white/50 mt-3">Bereit.</div>
+                    <pre id="agentOutput" class="text-[11px] text-white/80 mt-2 whitespace-pre-wrap hidden"></pre>
+                </div>
+
                 <!-- OCR / Vision Card -->
                 <div class="glass rounded-2xl p-5">
                     <h3 class="text-sm font-semibold uppercase tracking-wider text-white/50 mb-3">
@@ -404,33 +496,57 @@ async def get_dashboard() -> HTMLResponse:
                 if (!val) return;
 
                 ocrOutput.classList.remove('hidden');
-                ocrOutput.textContent = `OCR läuft für \"${val}\"...`;
+                ocrOutput.textContent = `OCR läuft für "${val}"...`;
                 ocrOutput.classList.add('text-glow', 'animate-pulse');
 
                 try {
                     const response = await fetch(`/api/ocr?query=${encodeURIComponent(val)}`);
                     const data = await response.json();
+                    ocrOutput.classList.remove('text-glow', 'animate-pulse');
 
                     if (data.count === 0) {
                 ocrOutput.textContent = `Keine Treffer gefunden für "${val}".`;
                 ocrOutput.classList.add('text-red-400');
                     } else {
-                        let html = `<div class="font-semibold text-white mb-1">Gefundene Treffer (${data.count}):</div><div class="space-y-1">`;
-                        data.matches.forEach(m => {
-                            html += `
-                                <div class="flex justify-between items-center bg-white/5 px-2 py-1 rounded border border-white/5">
-                                    <span>"${m.text}" (Konfidenz: ${m.confidence.toFixed(1)}%)</span>
-                                    <button onclick="triggerTap(${m.left + Math.round(m.width/2)}, ${m.top + Math.round(m.height/2)})" class="text-glow hover:underline">
-                                        Tippen (${m.left + Math.round(m.width/2)}, ${m.top + Math.round(m.height/2)})
-                                    </button>
-                                </div>
-                            `;
+                        ocrOutput.classList.remove('text-red-400');
+                        ocrOutput.innerHTML = '';
+                        const header = document.createElement('div');
+                        header.className = 'font-semibold text-white mb-1';
+                        header.textContent = `Gefundene Treffer (${data.count}):`;
+                        ocrOutput.appendChild(header);
+
+                        const list = document.createElement('div');
+                        list.className = 'space-y-1';
+
+                        (data.matches || []).forEach(m => {
+                            const row = document.createElement('div');
+                            row.className = 'flex justify-between items-center bg-white/5 px-2 py-1 rounded border border-white/5';
+
+                            const textNode = document.createElement('span');
+                            textNode.className = 'text-white/80';
+                            textNode.textContent = `"${m.text}" (Konfidenz: ${Number(m.confidence).toFixed(1)}%)`;
+
+                            const button = document.createElement('button');
+                            button.className = 'text-glow hover:underline';
+                            button.textContent = `Tippen (${m.left + Math.round(m.width/2)}, ${m.top + Math.round(m.height/2)})`;
+                            button.addEventListener('click', () => {
+                                triggerTap(m.left + Math.round(m.width/2), m.top + Math.round(m.height/2));
+                            });
+
+                            row.appendChild(textNode);
+                            row.appendChild(button);
+                            list.appendChild(row);
                         });
-                        html += `</div>`;
-                        ocrOutput.innerHTML = html;
+
+                        ocrOutput.appendChild(list);
                     }
                 } catch (e) {
-                    ocrOutput.innerHTML = `<span class="text-red-500">OCR-Fehler: ${e.message}</span>`;
+                    ocrOutput.classList.remove('text-glow', 'animate-pulse');
+                    ocrOutput.innerHTML = '';
+                    const errorEl = document.createElement('span');
+                    errorEl.className = 'text-red-500';
+                    errorEl.textContent = `OCR-Fehler: ${e.message}`;
+                    ocrOutput.appendChild(errorEl);
                 }
             }
 
@@ -516,6 +632,95 @@ async def get_dashboard() -> HTMLResponse:
                 logcatConsole.innerHTML = '<div class="text-white/40">[System] Logcat geleert.</div>';
             }
 
+            async function renderAuditCve(payload) {
+                const status = document.getElementById('auditCveStatus');
+                const output = document.getElementById('auditCveOutput');
+                if (!status || !output) return;
+                if (payload.status === 'error') {
+                    status.innerText = `Fehler: ${payload.detail}`;
+                    status.className = 'text-xs text-red-400';
+                    output.classList.add('hidden');
+                    return;
+                }
+
+                const lines = [];
+                lines.push(`Plugin: ${payload.plugin || 'CVE'}`);
+                lines.push(`Device: ${payload.device_info?.ro_product_model || '-'} / ${payload.device_info?.ro_build_version_release || '-'}`);
+                if (Array.isArray(payload.findings)) {
+                    if (payload.findings.length === 0) {
+                        lines.push('Findings: keine');
+                    } else {
+                        for (const item of payload.findings) {
+                            lines.push(`- ${item.title}: ${item.hint}`);
+                        }
+                    }
+                }
+                status.innerText = 'Audit abgeschlossen.';
+                status.className = 'text-xs text-emerald-400';
+                output.textContent = lines.join('\n');
+                output.classList.remove('hidden');
+            }
+
+            async function renderAuditIntents(payload) {
+                const status = document.getElementById('auditIntentStatus');
+                const output = document.getElementById('auditIntentOutput');
+                if (!status || !output) return;
+                if (payload.status === 'error') {
+                    status.innerText = `Fehler: ${payload.detail}`;
+                    status.className = 'text-xs text-red-400';
+                    output.classList.add('hidden');
+                    return;
+                }
+
+                const lines = [];
+                lines.push(`Plugin: ${payload.plugin || 'IntentMapper'}`);
+                lines.push(`Pakete: ${payload.package_count ?? '-'}`);
+                if (payload.keyword) lines.push(`Keyword: ${payload.keyword}`);
+                const matches = Array.isArray(payload.matches) ? payload.matches : [];
+                if (matches.length === 0) {
+                    lines.push('Matches: keine');
+                } else {
+                    lines.push(`Matches: ${matches.length}${payload.truncated ? ' (gekürzt)' : ''}`);
+                    for (const item of matches.slice(0, 40)) {
+                        lines.push(`- ${item.package}: ${item.entry}`);
+                    }
+                }
+                status.innerText = 'Scan abgeschlossen.';
+                status.className = 'text-xs text-emerald-400';
+                output.textContent = lines.join('\n');
+                output.classList.remove('hidden');
+            }
+
+            async function runCveAudit() {
+                try {
+                    const response = await fetch('/api/audit/cve');
+                    const data = await response.json();
+                    await renderAuditCve(data);
+                } catch (e) {
+                    const status = document.getElementById('auditCveStatus');
+                    if (status) {
+                        status.innerText = `Fehler: ${e.message}`;
+                        status.className = 'text-xs text-red-400';
+                    }
+                }
+            }
+
+            async function runIntentMap() {
+                try {
+                    const input = document.getElementById('intentKeyword');
+                    const keyword = input ? input.value.trim() : '';
+                    const response = await fetch(`/api/audit/intents?keyword=${encodeURIComponent(keyword)}`);
+                    const data = await response.json();
+                    await renderAuditIntents(data);
+                } catch (e) {
+                    const status = document.getElementById('auditIntentStatus');
+                    if (status) {
+                        status.innerText = `Fehler: ${e.message}`;
+                        status.className = 'text-xs text-red-400';
+                    }
+                }
+            }
+
             // Initial load
             setInterval(fetchLogcat, 2000);
             setInterval(refreshData, 5000);
@@ -577,9 +782,13 @@ def api_device() -> dict[str, object]:
         payload.update(
             {
                 "model": CONTEXT.adb.get_device_property("ro.product.model", serial=serial),
-                "battery_level": None,
-                "battery_temp": None,
-                "uptime": None,
+                "battery_level": MonitoringService._parse_battery_level(
+                    MonitoringService._read_battery_dump(CONTEXT.adb, serial)
+                ),
+                "battery_temp": MonitoringService._parse_battery_temp_c(
+                    MonitoringService._read_battery_dump(CONTEXT.adb, serial)
+                ),
+                "uptime": MonitoringService._read_uptime(CONTEXT.adb, serial),
             }
         )
     return payload
@@ -589,6 +798,39 @@ def api_device() -> dict[str, object]:
 def api_ocr(query: str) -> dict[str, object]:
     matches: list[dict[str, object]] = []
     return {"query": query, "matches": matches, "count": len(matches)}
+
+
+@app.get("/api/audit/cve")
+def api_audit_cve() -> dict[str, object]:
+    if CONTEXT.adb is None or CONTEXT.device_manager is None or CONTEXT.plugin_manager is None:
+        return {"status": "error", "detail": "runtime not initialized"}
+
+    plugin = _find_plugin("cve")
+    if plugin is None:
+        return {"status": "error", "detail": "plugin not found"}
+
+    try:
+        result = plugin.scan(CONTEXT.device_manager, CONTEXT.adb)
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+    return {"status": "ok", "plugin": getattr(plugin, "name", "cve"), **result}
+
+
+@app.get("/api/audit/intents")
+def api_audit_intents(keyword: str = "") -> dict[str, object]:
+    if CONTEXT.adb is None or CONTEXT.device_manager is None or CONTEXT.plugin_manager is None:
+        return {"status": "error", "detail": "runtime not initialized"}
+
+    plugin = _find_plugin("intent")
+    if plugin is None:
+        return {"status": "error", "detail": "plugin not found"}
+
+    safe_keyword = keyword.strip()[:120] if keyword else ""
+    try:
+        result = plugin.scan(CONTEXT.device_manager, CONTEXT.adb, keyword=safe_keyword or None)
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+    return {"status": "ok", "plugin": getattr(plugin, "name", "intentmapper"), **result}
 
 
 @app.get("/api/logcat")
@@ -605,8 +847,92 @@ def api_logcat() -> list[str]:
     return lines
 
 
+def _find_plugin(keyword: str):
+    if CONTEXT.plugin_manager is None:
+        return None
+    for plugin in getattr(CONTEXT.plugin_manager, "plugins", []):
+        name = getattr(plugin, "name", "").lower()
+        if keyword in name:
+            return plugin
+    return None
+
+
+_AGENT_FACTORY = {
+    "phonesploit_pro": ("plugins.phonesploit_pro", "PhoneSploitProPlugin"),
+    "androidhack_backdoor": ("plugins.androidhack_backdoor", "AndroidHackBackdoorPlugin"),
+    "androrat": ("plugins.androrat", "AndroRATPlugin"),
+    "cve_scan": ("plugins.cve_scanner", "CveScannerPlugin"),
+    "intent_map": ("plugins.intentmapper", "IntentMapperPlugin"),
+    "debloat_scan": ("plugins.app_debloater", "AppDebloaterPlugin"),
+}
+
+
+def _build_response_for_plugin(key: str, plugin):
+    serial = CONTEXT.current_device()
+    device_info = {}
+    if serial and CONTEXT.adb:
+        props = [
+            "ro.product.model",
+            "ro.product.brand",
+            "ro.build.version.release",
+            "ro.build.version.sdk",
+            "ro.build.version.security_patch",
+            "ro.debuggable",
+            "ro.secure",
+        ]
+        device_info = {p: CONTEXT.adb.get_device_property(p, serial=serial) for p in props}
+    return {
+        "status": "ok",
+        "module": key,
+        "plugin": getattr(plugin, "name", key),
+        "device_info": device_info,
+    }
+
+
+@app.get("/api/agent/{module}")
+def api_agent_run(module: str) -> dict[str, object]:
+    if CONTEXT.adb is None or CONTEXT.device_manager is None or CONTEXT.plugin_manager is None:
+        return {"status": "error", "detail": "runtime not initialized"}
+
+    mod_key = module.lower()
+    entries = _AGENT_FACTORY.get(mod_key)
+    if not entries:
+        return {"status": "error", "detail": f"unknown module: {mod_key}"}
+
+    module_name, class_name = entries
+    try:
+        mod = __import__(module_name, fromlist=[class_name])
+        plugin_class = getattr(mod, class_name)
+        plugin = plugin_class()
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+
+    # Capture plugin.run text output via redirect if console-backed; fallback to scan-style response
+    payload = _build_response_for_plugin(mod_key, plugin)
+
+    try:
+        plugin.run(CONTEXT.device_manager, CONTEXT.adb, {})
+    except Exception as exc:
+        payload.update({"status": "error", "detail": str(exc)})
+
+    return payload
+
+
 # Keep minimal FastAPI startup entry for direct command use
 if __name__ == "__main__":
+    import socket
+
+    def _find_free_port(start=8000, end=9000):
+        for port in range(start, end + 1):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    s.bind(("0.0.0.0", port))
+                    return port
+                except OSError:
+                    continue
+        return 8000
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=_find_free_port())

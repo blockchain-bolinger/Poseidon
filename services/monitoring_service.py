@@ -88,6 +88,20 @@ class MonitoringService:
         except Exception:
             return None
 
+    @staticmethod
+    def _read_uptime(adb: ADBHandler, serial: str) -> Optional[str]:
+        out, _, rc = adb.run_shell("uptime", serial=serial, use_cache=False)
+        if rc == 0 and out:
+            return out.strip()
+        out, _, rc = adb.run_shell("cat /proc/uptime", serial=serial, use_cache=False)
+        if rc == 0 and out:
+            try:
+                seconds = float(out.split()[0])
+                return f"{seconds/3600:.1f} h"
+            except Exception:
+                return out.strip()
+        return None
+
     def _parse_battery_level(self, dump: str) -> Optional[int]:
         for line in dump.splitlines():
             line = line.strip()

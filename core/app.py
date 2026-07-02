@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -69,7 +70,7 @@ class AppContext:
             return self.config
 
         self.raw_config = raw
-        self.config = json.loads(json.dumps(defaults))
+        self.config = copy.deepcopy(defaults)
         self.config.update({k: v for k, v in raw.items() if k != "global"})
         self.config["global"].update(raw.get("global", {}))
         self.config["devices"] = raw.get("devices", {})
@@ -115,4 +116,6 @@ class AppContext:
     def current_device(self) -> Optional[str]:
         if not self.device_manager:
             self.init_runtime()
+        if self.device_manager is None:
+            return None
         return self.device_manager.get_current_device()

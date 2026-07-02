@@ -99,3 +99,29 @@ class PluginManager:
         except Exception:
             pass
         return False
+
+    def _resolve_instance(self, plugin_class):
+        if isinstance(plugin_class, type):
+            return plugin_class()
+        return plugin_class
+
+    def run_plugin_by_class(self, plugin_class, device_manager, adb, config):
+        try:
+            plugin = self._resolve_instance(plugin_class)
+        except Exception as exc:
+            print(f"Plugin konnte nicht geladen werden: {exc}")
+            wait_for_enter()
+            return
+
+        name = getattr(plugin, "name", str(plugin))
+
+        if getattr(plugin, "destructive", False) and not confirm(f"Dieses Plugin kann destruktive Aktionen ausführen: '{name}'. Trotzdem fortsetzen?"):
+            return
+
+        logger.info(f"Plugin wird ausgeführt: {name}")
+        try:
+            plugin.run(device_manager, adb, config)
+        except Exception as exc:
+            logger.error(f"Kritischer Fehler im Plugin {name}: {exc}")
+            print(f"Fehler im Plugin: {exc}")
+            wait_for_enter()
