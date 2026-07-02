@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "source": "Poseidon example manifest",
+  "payloads": [
+    {
+      "key": "battery_snapshot",
+      "title": "Batteriestatus exportieren",
+      "category": "audit",
+      "description": "Erfasst einen kurzen Battery-Snapshot für lokale Audits.",
+      "command": "dumpsys battery",
+      "destructive": false,
+      "requires_confirmation": false
+    },
+    {
+      "key": "installed_packages",
+      "title": "Installierte Drittanbieter-Apps",
+      "category": "audit",
+      "description": "Listet die installierten User-Apps zur Inventur.",
+      "command": "pm list packages -3",
+      "destructive": false,
+      "requires_confirmation": false
+    },
+    {
+      "key": "logcat_snapshot",
+      "title": "Kleiner Logcat-Snapshot",
+      "category": "audit",
+      "description": "Nimmt einen kurzen Logcat-Ausschnitt für Troubleshooting auf.",
+      "command": "logcat -d -t 50",
+      "destructive": false,
+      "requires_confirmation": false
+    },
+    {
+      "key": "exported_components_check",
+      "title": "Exportierte Komponenten prüfen",
+      "category": "audit",
+      "description": "Hilft beim Auffinden exportierter Activities, Receiver, Services und Provider.",
+      "command": "dumpsys package <PACKAGE_NAME>",
+      "destructive": false,
+      "requires_confirmation": true
+    }
+  ]
+}

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from core.plugin_base import PluginBase
-from utils.ui_helpers import print_header, menu_prompt, wait_for_enter
-
+from plugins.artifact_library import combined_payloads, discover_apks
+from utils.ui_helpers import print_header, wait_for_enter
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
@@ -22,9 +22,21 @@ class AgentPayload:
     destructive: bool = False
     runner: Optional[str] = None
 
+    def score(self, text: str) -> int:
+        q = text.lower().strip()
+        score = 0
+        for keyword in self.intent_keywords:
+            kw = keyword.lower().strip()
+            if not kw:
+                continue
+            if kw == q:
+                score += 8
+            if kw in q:
+                score += 3 if len(kw) > 10 else 1
+        return score
+
     def matches(self, text: str) -> bool:
-        q = text.lower()
-        return any(keyword in q for keyword in self.intent_keywords)
+        return self.score(text) > 0
 
 
 @dataclass
@@ -41,111 +53,21 @@ class PoseidonAgent:
 
     def _default_payloads(self) -> List[AgentPayload]:
         return [
-            AgentPayload(
-                key="device_info",
-                title="\ud83d\udcf1 Ger\u00e4teinformationen",
-                description="Modell, Android-Version, Akku",
-                intent_keywords=["ger\u00e4teinformationen", "device info", "device", "modell", "android version", "battery", "akku", "info"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="installed_apps",
-                title="\ud83d\udc66 Installierte Apps auflisten",
-                description="User-Apps auflisten",
-                intent_keywords=["installierte apps", "apps", "installiert", "packages", "pm list", "application"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="running_processes",
-                title="\u2699\ufe0f Laufende Prozesse/Top-Apps",
-                description="Top-Consumers speicher und cpu",
-                intent_keywords=["laufende prozesse", "prozess", "prozesse", "top", "running", "leistung"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="logcat_recent",
-                title="\ud83d\udccb Letzte Logcat-Zeilen",
-                description="Fehler/Warnungen der letzten Minuten",
-                intent_keywords=["logcat", "logs", "log", "fehler", "warnung", "protokoll"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="perf_snapshot",
-                title="\ud83d\udcca Performance-Snapshot",
-                description="CPU, Speicher, Uptime",
-                intent_keywords=["performance snapshot", "cpu", "speicher", "ram", "uptime", "auslastung"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="security_summary",
-                title="\ud83d\udd12 Security-Properties",
-                description="ro.secure, ro.debuggable, ADB, AVB",
-                intent_keywords=["security properties", "secure", "debuggable", "adb", "avb", "verified boot", "rootproperties", "tiereigenschaften"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="system_property",
-                title="\ud83d\udd27 System-Eigenschaft lesen",
-                description="getprop f\u00fcr eine Property",
-                intent_keywords=["system property", "property", "prop", "getprop", "systemeigenschaft", "einstellung"],
-                destructive=False,
-            ),
-            AgentPayload(
-                key="cve_scan",
-                title="\ud83d\udee1\ufe0f CVE/Device-Audit starten",
-                description="Scannt generische Sicherheitsmerkmale",
-                intent_keywords=["cve scan", "security audit", "audit", "sicherheit", "check", "pr\u00fcfen"],
-                destructive=False,
-                runner="plugins.cve_scanner:CveScannerPlugin",
-            ),
-            AgentPayload(
-                key="intent_map",
-                title="\ud83d\udcd0 IntentMapper starten",
-                description="Exportierte Komponenten auflisten",
-                intent_keywords=["exportierte intents", "intentmapper", "intent", "exported", "mapper", "komponenten", "activity", "receiver", "service", "provider"],
-                destructive=False,
-                runner="plugins.intentmapper:IntentMapperPlugin",
-            ),
-            AgentPayload(
-                key="debloat_scan",
-                title="🚫 Bloatware-Scan",
-                description="Scan nach bekannten Trackern/Ads/System-Helpern universell",
-                intent_keywords=["bloatware scan", "bloatware", "debloat", "tracker", "werbung", "ads", "vorinstalliert"],
-                destructive=False,
-                runner="plugins.app_debloater:AppDebloaterPlugin",
-            ),
-            AgentPayload(
-                key="phonesploit_pro",
-                title="📡 PhoneSploit Pro",
-                description="ADB/Termux-Chains: TCP/IP, Reboot, Termux, Paket-/Intent-Audit",
-                intent_keywords=["phonesploit", "termux", "adb tcp", "remote shell", "package audit"],
-                destructive=False,
-                runner="plugins.phonesploit_pro:PhoneSploitProPlugin",
-            ),
-            AgentPayload(
-                key="androidhack_backdoor",
-                title="🔐 AndroidHack BackDoor",
-                description="Audit-/Steuer-Konsole: APK-Info, exportierte Komponenten, Berechtigungen",
-                intent_keywords=["androidhack backdoor", "audit konsole", "exportierte komponenten", "berechtigungen"],
-                destructive=False,
-                runner="plugins.androidhack_backdoor:AndroidHackBackdoorPlugin",
-            ),
-            AgentPayload(
-                key="androrat",
-                title="🕵️ AndroRAT",
-                description="Remote-Admin-Audit: Device-Info, Standort/Telefonie, Sensoren, Report",
-                intent_keywords=["androrat", "report export", "sensoren", "standort", "telefonie"],
-                destructive=False,
-                runner="plugins.androrat:AndroRATPlugin",
-            ),
-            AgentPayload(
-                key="clear_cache",
-                title="🗑️ Cache leeren (all)",
-                description="Cache-Partition leeren",
-                intent_keywords=["cache", "leeren", "clear"],
-                destructive=True,
-                requires_confirmation=True,
-            ),
+            AgentPayload("device_info", "📱 Geräteinformationen", "Modell, Android-Version, Akku", ["geräten", "device info", "modell", "android version", "battery", "akku", "info", "laufzeit", "akku laufzeit"]),
+            AgentPayload("installed_apps", "👦 Installierte Apps auflisten", "User-Apps auflisten", ["installierte apps", "apps", "installiert", "packages", "pm list", "application"]),
+            AgentPayload("running_processes", "⚙️ Laufende Prozesse/Top-Apps", "Top-Consumers Speicher und CPU", ["laufende prozesse", "prozess", "prozesse", "top", "running", "leistung"]),
+            AgentPayload("logcat_recent", "📋 Letzte Logcat-Zeilen", "Fehler/Warnungen der letzten Minuten", ["logcat", "logs", "log", "fehler", "warnung", "protokoll"]),
+            AgentPayload("perf_snapshot", "📊 Performance-Snapshot", "CPU, Speicher, Uptime", ["performance snapshot", "cpu", "speicher", "ram", "uptime", "auslastung"]),
+            AgentPayload("security_summary", "🔒 Security-Properties", "ro.secure, ro.debuggable, ADB, AVB", ["security properties", "secure", "debuggable", "adb", "avb", "verified boot", "rootproperties", "tiereigenschaften"]),
+            AgentPayload("system_property", "🔧 System-Eigenschaft lesen", "getprop für eine Property", ["system property", "property", "prop", "getprop", "systemeigenschaft", "einstellung"]),
+            AgentPayload("cve_scan", "🛡️ CVE/Device-Audit starten", "Scannt generische Sicherheitsmerkmale", ["cve scan", "security audit", "audit", "sicherheit", "check", "prüfen"], runner="plugins.cve_scanner:CveScannerPlugin"),
+            AgentPayload("intent_map", "📐 IntentMapper starten", "Exportierte Komponenten auflisten", ["exportierte intents", "intentmapper", "intent", "exported", "mapper", "komponenten", "activity", "receiver", "service", "provider"], runner="plugins.intentmapper:IntentMapperPlugin"),
+            AgentPayload("debloat_scan", "🚫 Bloatware-Scan", "Scan nach bekannten Trackern/Ads/System-Helpern", ["bloatware scan", "bloatware", "debloat", "tracker", "werbung", "ads", "vorinstalliert"], runner="plugins.app_debloater:AppDebloaterPlugin"),
+            AgentPayload("phonesploit_pro", "📡 PhoneSploit Pro", "ADB/Termux-Chains: TCP/IP, Reboot, Termux, Paket-/Intent-Audit", ["phonesploit", "termux", "adb tcp", "remote shell", "package audit", "apk"], runner="plugins.phonesploit_pro:PhoneSploitProPlugin"),
+            AgentPayload("androidhack_backdoor", "🔐 AndroidHack BackDoor", "Audit-/Steuer-Konsole: APK-Info, exportierte Komponenten, Berechtigungen", ["androidhack", "backdoor", "audit konsole", "exportierte komponenten", "berechtigungen", "apk"], runner="plugins.androidhack_backdoor:AndroidHackBackdoorPlugin"),
+            AgentPayload("androrat", "🕵️ AndroRAT", "Remote-Admin-Audit: Device-Info, Standort/Telefonie, Sensoren, Report", ["androrat", "report export", "sensoren", "standort", "telefonie", "apk"], runner="plugins.androrat:AndroRATPlugin"),
+            AgentPayload("payloads", "🧪 Safe Payload Templates", "Zeigt lokale Payload-Vorlagen und Demo-Templates", ["payload", "payloads", "exploit", "exploit erstellen", "generate payload", "create payload", "apk payload"]),
+            AgentPayload("apk_inventory", "📦 Lokale APK-Inventur", "Zeigt lokale APKs aus data/ und assets/", ["apk", "apk liste", "apks", "apk inventory", "lokale apk", "install apk"]),
         ]
 
     def classify(self, text: str) -> AgentPayload:
@@ -155,14 +77,7 @@ class PoseidonAgent:
         return self._fallback_payload()
 
     def _fallback_payload(self) -> AgentPayload:
-        return AgentPayload(
-            key="custom_shell",
-            title="\ud83d\udcac Benutzerdefinierte Shell",
-            description="F\u00fchrt einen einzelnen Befehl aus",
-            intent_keywords=[],
-            destructive=True,
-            requires_confirmation=True,
-        )
+        return AgentPayload("custom_shell", "💬 Benutzerdefinierte Shell", "Führt einen einzelnen Befehl aus", [], destructive=True)
 
 
 class AIAgentPlugin(PluginBase):
@@ -171,15 +86,15 @@ class AIAgentPlugin(PluginBase):
 
     @property
     def name(self) -> str:
-        return "\ud83e\udd16 AI Agent"
+        return "🤖 AI Agent"
 
     @property
     def description(self) -> str:
-        return "Eingabe in nat\u00fcrlicher Sprache -> generische ADB-Payloads."
+        return "Eingabe in natürlicher Sprache -> generische ADB-Payloads, APKs und lokale Audit-Flows."
 
     @property
     def version(self) -> str:
-        return "1.0"
+        return "2.0"
 
     @property
     def author(self) -> str:
@@ -192,21 +107,18 @@ class AIAgentPlugin(PluginBase):
     def run(self, device_manager: Any, adb: Any, config: Dict[str, Any]) -> None:
         serial = device_manager.get_current_device()
         if not serial:
-            print("Kein Ger\u00e4t verbunden.")
+            print("Kein Gerät verbunden.")
             wait_for_enter()
             return
 
-        print_header("AI Agent", "Nat\u00fcrliche Sprache in generische Payloads")
+        print_header("AI Agent", "Natürliche Sprache in generische Payloads")
         print("Beispiele:")
-        print("- 'Infos zum Ger\u00e4t'")
+        print("- 'Infos zum Gerät'")
         print("- 'Welche Apps sind installiert?'")
         print("- 'Zeige Fehler aus logcat'")
-        print("- 'Wie ist die Akkulaufzeit / Battery?'")
         print("- 'Security Audit starten'")
-        print("- 'Exportierte Intents auflisten'")
-        print("- 'Performance Snapshot'")
-        print("- 'Security Properties anzeigen'")
-        print("- 'Bloatware Scan'")
+        print("- 'Payload Templates anzeigen'")
+        print("- 'Lokale APKs anzeigen'")
         print("")
 
         text = input("Anfrage: ").strip()
@@ -216,7 +128,7 @@ class AIAgentPlugin(PluginBase):
         payload = self._agent.classify(text)
         self._agent.history.append(AgentTurn(user_text=text, payload=payload))
 
-        if payload.destructive and payload.requires_confirmation:
+        if payload.requires_confirmation and payload.destructive:
             if not input(f"{payload.title} - Aktion fortsetzen? (j/N): ").strip().lower() in {"j", "ja", "y", "yes"}:
                 print("Abbruch.")
                 wait_for_enter()
@@ -253,12 +165,14 @@ class AIAgentPlugin(PluginBase):
             self._exec_logcat_recent(adb, serial)
         elif key == "system_property":
             self._exec_system_property(adb, serial)
-        elif key == "clear_cache":
-            self._exec_clear_cache(adb, serial)
         elif key == "perf_snapshot":
             self._exec_perf_snapshot(adb, serial)
         elif key == "security_summary":
             self._exec_security_summary(adb, serial)
+        elif key == "payloads":
+            self._show_payloads()
+        elif key == "apk_inventory":
+            self._show_apks()
         else:
             self._exec_custom_shell(adb, serial, user_text)
 
@@ -302,11 +216,6 @@ class AIAgentPlugin(PluginBase):
         out, _, _ = adb.run_shell_args("getprop", prop, serial=serial)
         print(out)
 
-    def _exec_clear_cache(self, adb: Any, serial: str) -> None:
-        adb.run_shell_args("rm", "-rf", "/data/local/tmp/*", serial=serial)
-        adb.run_shell_args("rm", "-rf", "/sdcard/.Trashes", serial=serial)
-        print("Cache-Bereinigung simulativ ausgef\u00fchrt.")
-
     def _exec_perf_snapshot(self, adb: Any, serial: str) -> None:
         load = adb.run_shell("cat /proc/loadavg", serial=serial)[0]
         mem = adb.run_shell("cat /proc/meminfo | head -n 10", serial=serial)[0]
@@ -319,15 +228,7 @@ class AIAgentPlugin(PluginBase):
         print(uptime)
 
     def _exec_security_summary(self, adb: Any, serial: str) -> None:
-        keys = [
-            "ro.secure",
-            "ro.debuggable",
-            "ro.build.version.security_patch",
-            "ro.boot.vbmeta.avb_version",
-            "service.adb.tcp.port",
-            "persist.sys.debuggable",
-            "ro.build.tags",
-        ]
+        keys = ["ro.secure", "ro.debuggable", "ro.build.version.security_patch", "ro.boot.vbmeta.avb_version", "service.adb.tcp.port", "persist.sys.debuggable", "ro.build.tags"]
         for key in keys:
             value = adb.get_device_property(key, serial=serial)
             print(f"{key}: {value}")
@@ -340,3 +241,19 @@ class AIAgentPlugin(PluginBase):
         print(out)
         if err:
             print(err)
+
+    def _show_payloads(self) -> None:
+        payloads = combined_payloads()
+        print("\nVerfügbare Payload-Vorlagen:")
+        for idx, payload in enumerate(payloads, 1):
+            print(f"{idx:>2}. [{payload.category}] {payload.title} - {payload.description}")
+        print("\nHinweis: Es werden nur lokale, sichere Templates und Demo-Commands angezeigt.")
+
+    def _show_apks(self) -> None:
+        apks = discover_apks()
+        if not apks:
+            print("Keine APKs in data/apks oder assets/apks gefunden.")
+            return
+        print("\nLokale APKs:")
+        for idx, apk in enumerate(apks, 1):
+            print(f"{idx:>2}. {apk}")
