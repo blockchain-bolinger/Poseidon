@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from core.plugin_base import PluginBase
 from plugins.artifact_library import PayloadTemplate, combined_payloads, discover_apks
+from plugins.report_builder import ReportBuilder
 from utils.ui_helpers import print_header, menu_prompt, wait_for_enter, confirm
 from utils.cli_safety import sanitize_device_input
 from rich.console import Console
@@ -194,7 +195,18 @@ class PhoneSploitProPlugin(PluginBase):
     def _export_recon(self, adb: Any, serial: str) -> None:
         info, _, _ = adb.run_shell("dumpsys package com.android.shell | head -n 80", serial=serial)
         packages, _, _ = adb.run_shell("pm list packages -3", serial=serial)
-        path = BASE_DIR / "logs" / f"phonesploit_report_{serial}.txt"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(["--- dumpsys shell ---", info[:5000], "--- user packages ---", packages[:5000]]), encoding="utf-8")
-        console.print(f"[green]Recon-Report gespeichert:[/] {path}")
+        base_path = BASE_DIR / "logs" / f"phonesploit_report_{serial}"
+        package_lines = [line.split(":", 1)[-1].strip() for line in (packages or "").splitlines() if line.startswith("package:")]
+        builder = ReportBuilder("PhoneSploit Pro Recon Report")
+        builder.add_metadata("Gerät", serial)
+        builder.add_code("Shell Snapshot", (info or "").strip()[:5000] or "(keine Ausgabe)")
+        builder.add_table(
+            "User Packages",
+            [(pkg,) for pkg in package_lines[:200]],
+            headers=("Paket",),
+        )
+        if len(package_lines) > 200:
+            builder.add_text("Hinweis", f"... {len(package_lines) - 200} weitere Pakete")
+        md_path, json_path = builder.write_bundle(base_path)
+        console.print(f"[green]Markdown-Recon-Report gespeichert:[/] {md_path}")
+        console.print(f"[green]JSON-Recon-Report gespeichert:[/] {json_path}")

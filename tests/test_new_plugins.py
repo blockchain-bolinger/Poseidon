@@ -99,7 +99,10 @@ def test_androrat_export_report_writes_file(tmp_path, monkeypatch: pytest.Monkey
     dm = StubDeviceManager()
 
     plugin._export_report(adb, dm.get_current_device())
-    report = tmp_path / "logs" / f"androrat_report_{dm.get_current_device()}.txt"
-    assert report.exists()
-    text = report.read_text(encoding="utf-8")
-    assert "ro.product.model=TestModel" in text
+    report_md = tmp_path / "logs" / f"androrat_report_{dm.get_current_device()}.md"
+    report_json = tmp_path / "logs" / f"androrat_report_{dm.get_current_device()}.json"
+    assert report_md.exists()
+    assert report_json.exists()
+    text = report_md.read_text(encoding="utf-8")
+    assert "# AndroRAT Device Report" in text
+    assert "| Modell | TestModel |" in text

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from core.plugin_base import PluginBase
 from plugins.artifact_library import combined_payloads, discover_apks
+from plugins.report_builder import ReportBuilder
 from utils.ui_helpers import print_header, menu_prompt, wait_for_enter, confirm
 from utils.cli_safety import sanitize_device_input
 from rich.console import Console
@@ -96,18 +97,24 @@ class AndroRATPlugin(PluginBase):
         console.print(out[:5000])
 
     def _export_report(self, adb: Any, serial: str) -> None:
-        path = BASE_DIR / "logs" / f"androrat_report_{serial}.txt"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        info_props = ["ro.product.model", "ro.product.brand", "ro.build.version.release", "ro.build.version.sdk"]
-        lines = []
-        for prop in info_props:
-            value = adb.get_device_property(prop, serial=serial)
-            lines.append(f"{prop}={value}")
+        base_path = BASE_DIR / "logs" / f"androrat_report_{serial}"
+        builder = ReportBuilder("AndroRAT Device Report")
+        builder.add_metadata("Gerät", serial)
+        builder.add_table(
+            "Device Properties",
+            [
+                ("Modell", adb.get_device_property("ro.product.model", serial=serial) or "-"),
+                ("Brand", adb.get_device_property("ro.product.brand", serial=serial) or "-"),
+                ("Android", adb.get_device_property("ro.build.version.release", serial=serial) or "-"),
+                ("SDK", adb.get_device_property("ro.build.version.sdk", serial=serial) or "-"),
+            ],
+            headers=("Key", "Value"),
+        )
         out, _, _ = adb.run_shell("dumpsys location", serial=serial)
-        lines.append("--- location ---")
-        lines.append(out[:4000])
-        path.write_text("\n".join(lines), encoding="utf-8")
-        console.print(f"[green]Report gespeichert:[/] {path}")
+        builder.add_code("Location Snapshot", (out or "").strip()[:4000] or "(keine Ausgabe)")
+        md_path, json_path = builder.write_bundle(base_path)
+        console.print(f"[green]Markdown-Report gespeichert:[/] {md_path}")
+        console.print(f"[green]JSON-Report gespeichert:[/] {json_path}")
 
     def _install_local_apk(self, adb: Any, serial: str) -> None:
         apks = discover_apks()

@@ -101,8 +101,18 @@ def settings_menu(config: Dict[str, Any], device_manager: DeviceManager) -> None
         print(f"6. {get_text('setting_language')}: {config.get('language', 'de')}")
         print(f"7. {get_text('setting_auto_update')}: {'an' if config.get('auto_update_check', True) else 'aus'}")
         print(f"8. Log-Pfad: {config['global'].get('log_path', './logs')}")
+        print(f"9. MobSF-URL: {config['global'].get('mobsf_url', 'http://127.0.0.1:8000')}")
+        print("10. MobSF API-Key: " + ("gesetzt" if config["global"].get("mobsf_api_key") else "leer"))
+        print(f"11. JADX GUI Command: {config['global'].get('jadx_gui_cmd', 'jadx-gui')}")
+        print(f"12. apktool Command: {config['global'].get('apktool_cmd', 'apktool')}")
+        print(f"13. Frida PS Command: {config['global'].get('frida_cmd', 'frida-ps')}")
+        print(f"14. Frida Trace Command: {config['global'].get('frida_trace_cmd', 'frida-trace')}")
+        print(f"15. Objection Command: {config['global'].get('objection_cmd', 'objection')}")
+        print(f"16. mitmproxy Command: {config['global'].get('mitmproxy_cmd', 'mitmproxy')}")
+        print(f"17. Burp Command: {config['global'].get('burp_cmd', 'burp')}")
+        print(f"18. Ghidra Command: {config['global'].get('ghidra_cmd', 'ghidraRun')}")
         print("0. " + get_text("back"))
-        choice = menu_prompt(get_text("choose_option"), range(0, 9))
+        choice = menu_prompt(get_text("choose_option"), range(0, 19))
         if choice == 0:
             break
         elif choice == 1:
@@ -141,6 +151,45 @@ def settings_menu(config: Dict[str, Any], device_manager: DeviceManager) -> None
             new_log_path = input("Neuer Log-Pfad: ").strip()
             if new_log_path:
                 config["global"]["log_path"] = new_log_path
+        elif choice == 9:
+            new_url = input("Neue MobSF-URL: ").strip()
+            if new_url:
+                config["global"]["mobsf_url"] = new_url
+        elif choice == 10:
+            new_key = input("Neuer MobSF API-Key (leer zum Entfernen): ").strip()
+            config["global"]["mobsf_api_key"] = new_key
+        elif choice == 11:
+            new_cmd = input("Neuer JADX GUI-Command: ").strip()
+            if new_cmd:
+                config["global"]["jadx_gui_cmd"] = new_cmd
+        elif choice == 12:
+            new_cmd = input("Neuer apktool-Command: ").strip()
+            if new_cmd:
+                config["global"]["apktool_cmd"] = new_cmd
+        elif choice == 13:
+            new_cmd = input("Neuer Frida PS-Command: ").strip()
+            if new_cmd:
+                config["global"]["frida_cmd"] = new_cmd
+        elif choice == 14:
+            new_cmd = input("Neuer Frida Trace-Command: ").strip()
+            if new_cmd:
+                config["global"]["frida_trace_cmd"] = new_cmd
+        elif choice == 15:
+            new_cmd = input("Neuer Objection-Command: ").strip()
+            if new_cmd:
+                config["global"]["objection_cmd"] = new_cmd
+        elif choice == 16:
+            new_cmd = input("Neuer mitmproxy-Command: ").strip()
+            if new_cmd:
+                config["global"]["mitmproxy_cmd"] = new_cmd
+        elif choice == 17:
+            new_cmd = input("Neuer Burp-Command: ").strip()
+            if new_cmd:
+                config["global"]["burp_cmd"] = new_cmd
+        elif choice == 18:
+            new_cmd = input("Neuer Ghidra-Command: ").strip()
+            if new_cmd:
+                config["global"]["ghidra_cmd"] = new_cmd
         save_config(config)
         wait_for_enter()
 

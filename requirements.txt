@@ -25,3 +25,5 @@ uvicorn >= 0.20.0
 # Optional: data / export stack
 pandas >= 2.0.0
 
+# Reports/Exports are generated as Markdown/JSON with stdlib helpers; no extra package required.
+

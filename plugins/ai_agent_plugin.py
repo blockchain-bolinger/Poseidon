@@ -63,17 +63,18 @@ class PoseidonAgent:
             AgentPayload("cve_scan", "🛡️ CVE/Device-Audit starten", "Scannt generische Sicherheitsmerkmale", ["cve scan", "security audit", "audit", "sicherheit", "check", "prüfen"], runner="plugins.cve_scanner:CveScannerPlugin"),
             AgentPayload("intent_map", "📐 IntentMapper starten", "Exportierte Komponenten auflisten", ["exportierte intents", "intentmapper", "intent", "exported", "mapper", "komponenten", "activity", "receiver", "service", "provider"], runner="plugins.intentmapper:IntentMapperPlugin"),
             AgentPayload("debloat_scan", "🚫 Bloatware-Scan", "Scan nach bekannten Trackern/Ads/System-Helpern", ["bloatware scan", "bloatware", "debloat", "tracker", "werbung", "ads", "vorinstalliert"], runner="plugins.app_debloater:AppDebloaterPlugin"),
-            AgentPayload("phonesploit_pro", "📡 PhoneSploit Pro", "ADB/Termux-Chains: TCP/IP, Reboot, Termux, Paket-/Intent-Audit", ["phonesploit", "termux", "adb tcp", "remote shell", "package audit", "apk"], runner="plugins.phonesploit_pro:PhoneSploitProPlugin"),
-            AgentPayload("androidhack_backdoor", "🔐 AndroidHack BackDoor", "Audit-/Steuer-Konsole: APK-Info, exportierte Komponenten, Berechtigungen", ["androidhack", "backdoor", "audit konsole", "exportierte komponenten", "berechtigungen", "apk"], runner="plugins.androidhack_backdoor:AndroidHackBackdoorPlugin"),
-            AgentPayload("androrat", "🕵️ AndroRAT", "Remote-Admin-Audit: Device-Info, Standort/Telefonie, Sensoren, Report", ["androrat", "report export", "sensoren", "standort", "telefonie", "apk"], runner="plugins.androrat:AndroRATPlugin"),
+            AgentPayload("phonesploit_pro", "📡 PhoneSploit Pro", "ADB/Termux-Chains: TCP/IP, Reboot, Termux, Paket-/Intent-Audit", ["phonesploit", "termux", "adb tcp", "remote shell", "package audit", "apk installieren", "lokale apk"], runner="plugins.phonesploit_pro:PhoneSploitProPlugin"),
+            AgentPayload("androidhack_backdoor", "🔐 AndroidHack BackDoor", "Audit-/Steuer-Konsole: APK-Info, exportierte Komponenten, Berechtigungen", ["androidhack", "backdoor", "audit konsole", "exportierte komponenten", "berechtigungen", "apk info", "apk-installation"], runner="plugins.androidhack_backdoor:AndroidHackBackdoorPlugin"),
+            AgentPayload("androrat", "🕵️ AndroRAT", "Remote-Admin-Audit: Device-Info, Standort/Telefonie, Sensoren, Report", ["androrat", "report export", "sensoren", "standort", "telefonie", "apk report"], runner="plugins.androrat:AndroRATPlugin"),
             AgentPayload("payloads", "🧪 Safe Payload Templates", "Zeigt lokale Payload-Vorlagen und Demo-Templates", ["payload", "payloads", "exploit", "exploit erstellen", "generate payload", "create payload", "apk payload"]),
             AgentPayload("apk_inventory", "📦 Lokale APK-Inventur", "Zeigt lokale APKs aus data/ und assets/", ["apk", "apk liste", "apks", "apk inventory", "lokale apk", "install apk"]),
         ]
 
     def classify(self, text: str) -> AgentPayload:
-        matches = [p for p in self.payloads if p.matches(text)]
+        matches = [(p.score(text), idx, p) for idx, p in enumerate(self.payloads) if p.matches(text)]
         if matches:
-            return matches[0]
+            matches.sort(key=lambda item: (-item[0], item[1]))
+            return matches[0][2]
         return self._fallback_payload()
 
     def _fallback_payload(self) -> AgentPayload:

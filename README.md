@@ -17,6 +17,7 @@ Herstellerunabhängiges Android-Audit- und Steuerungsframework auf Basis von ADB
 | **System/Developer** | Paket-/App-Management, Konsolen, Backup, Developer-Optionen |
 | **KI-Agent** | Natürliche Sprache → Plugin/Modul-Dispatch |
 | **Pluginsystem** | Auto-Discovery, destruktive Kennzeichnung, Bestätigungsprompt |
+| **Reports & Export** | Markdown-/JSON-Reports, Findings-Bundles, Datei-Export |
 | **OCR/Vision** | Tesseract + Pillow, Mehrwortsuche, Bounding-Box-Bewertung, Annotationen |
 | **Monitoring** | Metrik-Polling, CSV/JSONL-Export, Streaming |
 | **Internationalisierung** | Mehrsprachigkeit über `utils/i18n.py` |
@@ -171,10 +172,46 @@ Poseidon
 │   ├── dependency_checker.py
 │   ├── decorators.py
 ├── data/
+│   ├── apks/                   # Lokale Demo-/Test-APKs für Installationsflüsse
+│   ├── payloads/               # JSON-Manifest(e) für sichere lokale Payload-Vorlagen
 │   └── bloatware.json          # Universal-Bloatware-Liste
 └── docs/
     └── MODULES.md
 ```
+
+---
+
+## Lokale Assets
+
+Poseidon liest optionale lokale Dateien aus dem Projektbaum:
+
+- `data/apks/` → Demo-/Test-APKs für Installationsflüsse
+- `assets/apks/` → alternative APK-Quelle
+- `data/payloads/` → JSON-Manifest(e) mit sicheren lokalen Payload-Vorlagen
+- `assets/payloads/` → alternative Manifest-Quelle
+
+### Beispiel-Manifest
+
+Ein Payload-Manifest kann z. B. so aussehen:
+
+```json
+{
+  "version": 1,
+  "payloads": [
+    {
+      "key": "battery_snapshot",
+      "title": "Batteriestatus exportieren",
+      "category": "audit",
+      "description": "Erfasst einen kurzen Battery-Snapshot.",
+      "command": "dumpsys battery",
+      "destructive": false,
+      "requires_confirmation": false
+    }
+  ]
+}
+```
+
+Dieses Format wird von den Plugin-Templates automatisch erkannt und in den Menüs angezeigt.
 
 ---
 
@@ -265,7 +302,7 @@ Dispatch über `ai_agent_plugin.py`; Plugin-Zuordnung per natürlicher Sprache.
 |---|---|
 | `PhoneSploit Pro` | ADB TCP/IP-Aktivierung, Reboot-Modi, Termux-Prüfung, Paket-/Intent-Audit |
 | `AndroidHack BackDoor` | ADB-Statuscheck, APK-Info via dumpsys, exportierte Komponenten, Berechtigungsaudit |
-| `AndroRAT` | Device-Info-Export, Standort/Telefonie-Status, Sensorliste, Report-Export |
+| `AndroRAT` | Device-Info-Export, Standort/Telefonie-Status, Sensorliste, **Markdown-Report-Export** |
 | `CVE Scanner` | CVE/Security-Audit-Payloads |
 | `IntentMapper` | Intent-Mapping/-Analyse |
 | `App Debloater` | Bloatware-Scan |
@@ -337,6 +374,7 @@ Abgedeckt unter anderem:
 - i18n-/Lokalisierungshandling
 - Gerätemanager-Verhalten
 - Neue Plugin-Familien: PhoneSploit Pro, AndroidHack BackDoor, AndroRAT
+- Markdown-Report-Exports für AndroRAT und PhoneSploit Pro
 
 ---
 
