@@ -58,14 +58,32 @@ class SimpleProgressBar:
     def close(self):
         self.progress.stop()
 
-def show_menu_generic(title, options, prompt="Option wählen"):
+def show_menu_generic(title_key, subtitle_key, options, device_manager, adb):
     """
-    Einfache generische Menüanzeige für ältere Module.
-    options erwartet eine Liste von Strings.
-    Gibt die ausgewählte Nummer als int zurück.
+    Renders a generic menu in the terminal using i18n keys.
+    :param title_key: i18n key for the title
+    :param subtitle_key: i18n key for the subtitle
+    :param options: list of tuples (emoji, label_key, callback)
+    :param device_manager: DeviceManager instance
+    :param adb: ADBHandler instance
     """
-    print_header(title, "")
-    for idx, option in enumerate(options, 1):
-        print(f"{idx}. {option}")
-    print("0. Zurück")
-    return menu_prompt(prompt, range(0, len(options) + 1))
+    from utils.i18n import get_text
+    while True:
+        clear_screen()
+        print_header(get_text(title_key), get_text(subtitle_key))
+        
+        for i, (emoji, label_key, _) in enumerate(options, 1):
+            print(f"{i:2d}. {emoji} {get_text(label_key)}")
+        print(" 0. ❌ " + get_text("back"))
+        
+        choice = menu_prompt(get_text("choose_option"), range(0, len(options) + 1))
+        if choice == 0:
+            break
+        else:
+            callback = options[choice - 1][2]
+            try:
+                callback(device_manager, adb)
+            except Exception as e:
+                console.print(f"[red]Fehler bei der Ausführung: {e}[/red]")
+                wait_for_enter()
+

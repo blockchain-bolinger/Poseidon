@@ -1,398 +1,392 @@
-# 🌊 Poseidon
+# Poseidon 🌊
 
-**Poseidon** is a professional ADB-based Android toolkit for diagnostics, automation, monitoring, and OCR-driven UI workflows.
+Herstellerunabhängiges Android-Audit- und Steuerungsframework auf Basis von ADB. Poseidon kombiniert interaktive Terminal-UI, Web-Remote-Dashboard, Headless-CLI, generische Recon- und Audit-Payloads sowie einen KI-Agenten für natürliche Sprache.
 
-It combines:
-- interactive terminal workflows
-- headless CLI automation
-- device monitoring with CSV / JSON export
-- OCR-assisted UI text detection
-- structured operator-focused workflows
-- Raspberry Pi / Linux friendly deployment
-
-> ⚠️ Use Poseidon only on devices you own or are explicitly authorized to assess.
+> **Hinweis:** Dieses Tool ist für **legitime Sicherheitstests an eigenen oder autorisierten Geräten** gedacht. Nutzung auf fremden Geräten ohne ausdrückliche Zustimmung ist rechtswidrig.
 
 ---
 
-# Highlights
+## Kernfähigkeiten
 
-## Core capabilities
-- Android device operations via **ADB**
-- interactive terminal menus
-- headless CLI automation
-- monitoring snapshots and streaming workflows
-- CSV / JSONL metric export
-- OCR-assisted UI target detection
-- best-match text selection for UI interaction
-- plugin support
-- terminal-first operator workflow
-
-## Canonical runtime
-This repository is now centered around the canonical runtime path:
-
-- `main.py`
-- `cli.py`
-- `README.md`
-- `core/adb_handler.py`
-
-These files represent the current primary user-facing path.
+| Bereich | Highlights |
+|---|---|
+| **Interfaces** | TUI `main.py`, Web-UI `web_ui.py`, Headless-CLI `cli.py` |
+| **Geräte-Stack** | Geräteerkennung, Eigenschaftsabfragen, ADB-Health-Checks, Themes |
+| **Audit-Module** | CVE-Scanner, Recon für exported components, IntentMapper, Bloatware-Scan |
+| **Medien & Steuerung** | Screenshots, Aufnahme, Dateimanager, Input/Tap, Remote-Keyboard |
+| **System/Developer** | Paket-/App-Management, Konsolen, Backup, Developer-Optionen |
+| **KI-Agent** | Natürliche Sprache → Plugin/Modul-Dispatch |
+| **Pluginsystem** | Auto-Discovery, destruktive Kennzeichnung, Bestätigungsprompt |
+| **Reports & Export** | Markdown-/JSON-Reports, Findings-Bundles, Datei-Export |
+| **OCR/Vision** | Tesseract + Pillow, Mehrwortsuche, Bounding-Box-Bewertung, Annotationen |
+| **Monitoring** | Metrik-Polling, CSV/JSONL-Export, Streaming |
+| **Internationalisierung** | Mehrsprachigkeit über `utils/i18n.py` |
 
 ---
 
-# Repository structure
+## Voraussetzungen
 
-```text
-Poseidon/
-├─ main.py
-├─ cli.py
-├─ config.json
-├─ requirements.txt
-├─ README.md
-├─ LICENSE
-├─ core/
-│  ├─ adb_handler.py
-│  ├─ device_manager.py
-│  ├─ exceptions.py
-│  ├─ logger.py
-│  ├─ plugin_manager.py
-│  └─ result.py
-├─ services/
-│  ├─ monitoring_service.py
-│  ├─ monitoring_service_v2.py
-│  ├─ vision_service.py
-│  └─ vision_service_v2.py
-├─ modules/
-│  ├─ monitoring.py
-│  ├─ monitoring_v2.py
-│  ├─ ui_vision.py
-│  ├─ ui_vision_v2.py
-│  └─ additional feature modules
-├─ scripts/
-│  └─ smoke_test_v4.sh
-├─ docs/
-│  └─ ROADMAP.md
-├─ plugins/
-├─ logs/
-├─ screenshots/
-└─ backups/
-
+| Komponente | Empfehlung |
+|---|---|
+| Python | ≥ 3.10 |
+| Systemtool | `adb` auf `PATH` |
+| Grafisches Backend optional | `scrcpy` |
+| OCR optional | `tesseract`, deutsche Sprachpakete falls gewünscht |
+| Paketmanager | `pip` oder `uv` |
 
 ---
 
-Requirements
+## Installation
 
-System packages
-
-Recommended on Debian, Ubuntu, Kali, or Raspberry Pi OS:
-
-sudo apt update
-sudo apt install -y python3 python3-venv adb scrcpy ffmpeg tesseract-ocr
-
-Python environment
-
+```bash
+git clone https://github.com/USERNAME/Poseidon.git
+cd Poseidon
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements_v4.txt
+pip install -r requirements.txt
+pytest
+```
 
-> Pillow and pytesseract are required for OCR / vision workflows.
+Zusätzliche optionale Abhängigkeiten für OCR/Vision:
 
-
-
-
----
-
-Quick start
-
-Interactive mode
-
-Start Poseidon with the interactive terminal UI:
-
-python main.py
-
-Headless CLI
-
-Use the CLI for automation and scripting:
-
-python cli.py
-
+```bash
+# Debian/Kali
+sudo apt install tesseract-ocr tesseract-ocr-deu
+```
 
 ---
 
-CLI usage
+## Schnellstart
 
-Device commands
+### Konfiguration anpassen
 
-python cli.py devices list
-python cli.py devices list --json
+```json
+{
+  "version": "5.0-dev",
+  "language": "de",
+  "theme": "light",
+  "auto_update_check": true,
+  "global": {
+    "backup_path": "./backups",
+    "screenshot_path": "./screenshots",
+    "record_duration": 30,
+    "scrcpy_path": "scrcpy",
+    "log_path": "./logs",
+    "monitor_stream_max_duration_s": 300,
+    "monitor_stream_max_lines": 5000,
+    "monitor_stream_heartbeat_interval_lines": 50,
+    "dmesg_stream_max_duration_s": 120,
+    "dmesg_stream_max_lines": 2000
+  },
+  "devices": {}
+}
+```
 
-Health check
+### TUI starten
 
-python cli.py health check
-python cli.py health check --json
+```bash
+python3 main.py
+```
 
-Monitoring snapshot
+### Web-UI starten
 
-python cli.py monitor once --json
-python cli.py monitor once --export csv --json
-python cli.py monitor once --export jsonl --json
-python cli.py monitor once --export both --json
+```bash
+python3 web_ui.py
+```
 
-Monitoring stream
+Optionaler API-Token für die Web-API:
 
-python cli.py monitor stream --interval 2 --count 5
-python cli.py monitor stream --interval 2 --count 5 --export jsonl
-python cli.py monitor stream --interval 2 --count 5 --export both --json
+```bash
+POSEIDON_API_TOKEN="geheim" python3 web_ui.py
+```
 
-OCR / Vision search
+### Headless-CLI
 
-python cli.py vision find-text "WLAN" --annotate --json
-python cli.py vision find-text "Einstellungen" --min-confidence 20 --json
-python cli.py vision find-text "WLAN Einstellungen" --annotate --json
-
-OCR / Vision tap
-
-Dry-run preview:
-
-python cli.py vision tap-text "WLAN" --json
-
-Real tap:
-
-python cli.py vision tap-text "WLAN" --force --json
-
-> Without --force, Poseidon performs a dry run and shows the selected tap position without executing it.
-
-
-
-
----
-
-Interactive menus
-
-Monitoring
-
-The interactive monitoring menu provides:
-
-battery level
-
-battery temperature
-
-memory usage
-
-memory availability
-
-optional CSV / JSONL export
-
-
-Vision / OCR
-
-The interactive OCR menu provides:
-
-screenshot capture
-
-OCR text matching
-
-annotation of OCR matches
-
-best-match selection
-
-optional tap on the best detected target
-
-
+```bash
+python3 cli.py devices list
+python3 cli.py health check
+python3 cli.py monitor once --export both --json
+python3 cli.py vision find-text "Einstellungen"
+python3 cli.py vision tap-text "OK" --force --json
+```
 
 ---
 
-Monitoring
+## Projektstruktur
 
-Poseidon supports monitoring through the service layer.
-
-Current metrics include:
-
-timestamp
-
-active serial
-
-battery level
-
-battery temperature
-
-memory used
-
-memory free
-
-basic CPU load support in the v2 path
-
-
-Export support
-
-Monitoring data can be exported as:
-
-CSV
-
-JSONL
-
-
-Default export location:
-
-./logs
-
-
-
----
-
-OCR / Vision
-
-Poseidon supports OCR-based UI workflows through screenshot analysis.
-
-Current OCR features include:
-
-screenshot capture
-
-normalized OCR matching
-
-multi-word OCR search
-
-confidence filtering
-
-best-match selection
-
-screenshot annotation
-
-
-Default screenshot location:
-
-./screenshots
-
-
-
----
-
-Testing
-
-Basic validation:
-
-python -m py_compile main.py
-python -m py_compile cli.py
-python cli.py devices list
-python cli.py health check --json
-python cli.py monitor once --json
-
-Full smoke test:
-
-chmod +x scripts/smoke_test_v4.sh
-./scripts/smoke_test_v4.sh
-
-For the full testing workflow, see:
-
-TESTING.md
-
-
+```
+Poseidon
+├── cli.py                      # Headless CLI
+├── main.py                     # TUI Dashboard + Menü
+├── web_ui.py                   # FastAPI Web Remote + API
+├── config.json                 # Nutzerkonfiguration
+├── requirements.txt
+├── tests/
+├── core/
+│   ├── app.py                  # AppContext, Config-Loader, Runtime-Setup
+│   ├── adb_handler.py          # ADB-Kapsel, Shell/Result-Handling
+│   ├── device_manager.py       # Device-Erkennung, Auswahl, Metadata
+│   ├── plugin_base.py          # Abstrakte Plugin-Basisklasse
+│   ├── plugin_manager.py       # Plugin-Discovery + Menü-Dispatch
+│   ├── updater.py              # Update-Check-Menü
+│   ├── batch_processor.py      # Batch-Run-Logik
+│   ├── logger.py
+├── services/
+│   ├── vision_service.py       # OCR/Vision-Pipeline
+│   └── monitoring_service.py   # Device-Metriken + Export
+├── modules/
+│   ├── info.py
+│   ├── apps.py
+│   ├── media.py
+│   ├── control.py
+│   ├── network.py
+│   ├── system.py
+│   ├── logcat.py
+│   ├── backup.py
+│   ├── developer.py
+│   ├── security.py
+│   ├── macro.py
+│   ├── dumpsys_gui.py
+│   ├── whatsapp_backup.py
+│   ├── dashboard.py
+│   ├── files.py
+│   ├── analyzer.py
+│   ├── monitoring.py
+│   ├── ui_vision.py
+├── plugins/
+│   ├── phonesploit_pro.py
+│   ├── androidhack_backdoor.py
+│   ├── androrat.py
+│   ├── ai_agent_plugin.py
+│   ├── cve_scanner.py
+│   ├── intentmapper.py
+│   ├── app_debloater.py
+│   └── custom_command.py
+├── utils/
+│   ├── cli_safety.py           # Eingabesanitizer für CLI-Eingaben
+│   ├── i18n.py                 # Übersetzungen/Locale
+│   ├── ansi_colors.py          # Theme-Support
+│   ├── ui_helpers.py
+│   ├── qr_helper.py
+│   ├── file_utils.py
+│   ├── dependency_checker.py
+│   ├── decorators.py
+├── data/
+│   ├── apks/                   # Lokale Demo-/Test-APKs für Installationsflüsse
+│   ├── payloads/               # JSON-Manifest(e) für sichere lokale Payload-Vorlagen
+│   └── bloatware.json          # Universal-Bloatware-Liste
+└── docs/
+    └── MODULES.md
+```
 
 ---
 
-Configuration
+## Lokale Assets
 
-Poseidon uses config.json for runtime settings such as:
+Poseidon liest optionale lokale Dateien aus dem Projektbaum:
 
-backup path
+- `data/apks/` → Demo-/Test-APKs für Installationsflüsse
+- `assets/apks/` → alternative APK-Quelle
+- `data/payloads/` → JSON-Manifest(e) mit sicheren lokalen Payload-Vorlagen
+- `assets/payloads/` → alternative Manifest-Quelle
 
-screenshot path
+### Beispiel-Manifest
 
-log path
+Ein Payload-Manifest kann z. B. so aussehen:
 
-theme
+```json
+{
+  "version": 1,
+  "payloads": [
+    {
+      "key": "battery_snapshot",
+      "title": "Batteriestatus exportieren",
+      "category": "audit",
+      "description": "Erfasst einen kurzen Battery-Snapshot.",
+      "command": "dumpsys battery",
+      "destructive": false,
+      "requires_confirmation": false
+    }
+  ]
+}
+```
 
-language
-
-scrcpy path
-
-update behavior
-
-
-Runtime directories commonly used:
-
-./logs
-
-./screenshots
-
-./backups
-
-
-
----
-
-Recommended workflow
-
-Interactive operator workflow
-
-python main.py
-
-Automation / scripting workflow
-
-python cli.py
-
-Validation workflow
-
-Use:
-
-TESTING.md
-
-scripts/smoke_test_v4.sh
-
-
-PR template
-
-
-These files define the supported workflow, security posture, contribution style, and release direction.
-
+Dieses Format wird von den Plugin-Templates automatisch erkannt und in den Menüs angezeigt.
 
 ---
 
-Safety
+## Pluginsystem
 
-Poseidon is intended for:
+### Konzept
 
-personal devices
+`PluginManager` durchsucht automatisch `plugins/`, lädt bekannten Plugin-Typen und erstellt das dynamische Menü. Unterstützt werden:
 
-lab devices
+- moderne Klasse via `PluginBase`
+- Legacy-Fallback via Modul `setup()`
 
-explicitly authorized environments
+### Eigenschaften
 
+Jedes Plugin kann Eigenschaften bereitstellen:
 
-Do not use it against third-party devices or systems without authorization.
+- `name`
+- `description`
+- `version`
+- `author`
+- `destructive`
 
+### Basisbeispiel
+
+```python
+from core.plugin_base import PluginBase
+
+class MeinPlugin(PluginBase):
+    @property
+    def name(self):
+        return "Mein Plugin"
+
+    @property
+    def description(self):
+        return "Kurzbeschreibung"
+
+    @property
+    def destructive(self):
+        return False
+
+    def run(self, device_manager, adb, config):
+        pass
+```
+
+### Sicherheitslogik
+
+Plugins mit `destructive = True` erfordern eine zusätzliche Bestätigung vor dem Start.
 
 ---
 
-Roadmap
+## Module und Plugins
 
-The long-term direction for Poseidon is:
+### Telemetrie/Basics
 
-stable canonical runtime
+- Geräteinformationen, Model-Identifikation, Android-Property-Mapping
+- App-Auflistung, Berechtigungs-Inspektion, Export-Komponenten
 
-hardened ADB execution
+### Medien/Steuerung
 
-stronger monitoring fidelity
+- Screenshot, Bildschirmaufnahme
+- Interaktive Taps und Texteingabe
+- Dateimanager
+- Remote-Tastatur in Web-UI
 
-more robust OCR / vision
+### System
 
-clearer CLI behavior
+- Backup-Routinen
+- dumpsys-GUI
+- Logcat-Stream
+- Developer-Optionen
+- WhatsApp-Backup-Modul
 
-reliable Raspberry Pi deployment
+### Sicherheit/Audit/Recon
 
-cleaner public release surface
+- CVE-Scanner
+- IntentMapper
+- Universal-Bloatware-Scan über `data/bloatware.json`
+- Permission-Audit
+- Exportierte Activities/Receivers/Services/Providers
 
+### KI-Agent
 
-See:
+Dispatch über `ai_agent_plugin.py`; Plugin-Zuordnung per natürlicher Sprache.
 
-docs/ROADMAP.md
+### Plugin-Module
 
-
+| Modul/Plugin | Zweck |
+|---|---|
+| `PhoneSploit Pro` | ADB TCP/IP-Aktivierung, Reboot-Modi, Termux-Prüfung, Paket-/Intent-Audit |
+| `AndroidHack BackDoor` | ADB-Statuscheck, APK-Info via dumpsys, exportierte Komponenten, Berechtigungsaudit |
+| `AndroRAT` | Device-Info-Export, Standort/Telefonie-Status, Sensorliste, **Markdown-Report-Export** |
+| `CVE Scanner` | CVE/Security-Audit-Payloads |
+| `IntentMapper` | Intent-Mapping/-Analyse |
+| `App Debloater` | Bloatware-Scan |
+| `Custom Command` | Eigene ADB-Shell-Kommandos |
+| `Hardware Monitor` | Hardware-Metriken |
 
 ---
 
-License
+## KI-Agent / NL Schnittstelle
 
-MIT License. See:
+- Modul: `plugins/ai_agent_plugin.py`
+- Eingabe: natürliche Sprache in TUI oder Web-UI
+- Dispatch auf konkrete Plugin-Klassen: `PhoneSploitProPlugin`, `AndroidHackBackdoorPlugin`, `AndroRATPlugin`, plus Scanner/Mapper/Debloat-Workflows
+- Rückgabeformat: strukturierter Bericht/Status
 
-LICENSE
+---
+
+## OCR/Vision
+
+Nutzt Tesseract und Pillow über `VisionService`:
+
+- Ganzwort- und Mehrwortsuche auf Screenshots
+- Trefferbewertung nach Konfidenz und Genauigkeit
+- Deduplizierung
+- Annotation exportierbar als Bild
+
+---
+
+## Web-UI Absegnung
+
+Technologien:
+
+- FastAPI + Uvicorn
+- Tailwind-CSS-Frontend
+- Interaktiver Screenshot, Klick/Tap-Mapping, Logcat-Livestream, Statistik-Cards
+
+Schutz:
+
+- Optionaler Bearer-Token über `POSEIDON_API_TOKEN`
+- UTF-8-sicherer Logging-Stream
+- Lebenszyklus-Management für ADB-Server
+
+---
+
+## Sicherheitsprinzipien
+
+- Eingabesanitizer in `utils/cli_safety.py`
+- Klare destruktive Kennzeichnung aller riskanten Tools
+- Bestätigungsprompt vor gefährlichen Aktionen
+- Keine festen Anmeldedaten
+- `.env` wird nicht im Standard-Commit-Pfad abgelegt
+- Pentest-Awareness-Demos, keine illegalen Persistenz-/Exfiltrationsaktionen
+
+---
+
+## Tests
+
+```bash
+pytest
+python3 -m pytest
+```
+
+Abgedeckt unter anderem:
+
+- Plugin-Registrierung
+- Plugin-Menü-Abbruchverhalten
+- App-Context-Init und Config-Merge
+- CLI-Safety-Sanitizer
+- i18n-/Lokalisierungshandling
+- Gerätemanager-Verhalten
+- Neue Plugin-Familien: PhoneSploit Pro, AndroidHack BackDoor, AndroRAT
+- Markdown-Report-Exports für AndroRAT und PhoneSploit Pro
+
+---
+
+## Mitwirken
+
+1. Fork erstellen
+2. Feature-Branch anlegen
+3. Tests und Lint-Prüfungen durchführen
+4. Pull Request eröffnen
+
+---
+
+## Lizenz
+
+MIT

@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
+from __future__ import annotations
+
 import sys
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
+from core.app import AppContext
+from core.updater import check_for_updates, show_update_menu
+from core.batch_processor import show_batch_menu
 
+from utils.ansi_colors import fg, style, set_theme
+from utils.ui_helpers import clear_screen, print_header, menu_prompt, confirm, wait_for_enter
+from core.logger import logger
+from utils.i18n import get_text, set_language, get_available_languages
 from core.device_manager import DeviceManager
 from core.adb_handler import ADBHandler
 from core.plugin_manager import PluginManager
-from core.batch_processor import show_batch_menu
-from core.updater import check_for_updates, show_update_menu
-from core.logger import logger
-
-from utils.ansi_colors import fg, style, init as color_init, set_theme
-from utils.ui_helpers import clear_screen, print_header, menu_prompt, confirm, wait_for_enter
-from utils.i18n import get_text, set_language, get_available_languages
-from utils.dependency_checker import check_all_dependencies
 
 from modules import (
     info,
@@ -38,82 +36,28 @@ from modules import (
     dashboard,
     files,
     analyzer,
-    monitoring_v2,
-    ui_vision_v2,
+    monitoring,
+    ui_vision,
 )
 
-CONFIG_PATH = BASE_DIR / "config.json"
+from plugins.phonesploit_pro import PhoneSploitProPlugin
+from plugins.androidhack_backdoor import AndroidHackBackdoorPlugin
+from plugins.androrat import AndroRATPlugin
+
+BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "assets" / "logo.txt"
-
-
-def default_config() -> Dict[str, Any]:
-    return {
-        "version": "5.0-dev",
-        "language": "de",
-        "theme": "light",
-        "auto_update_check": True,
-        "license_check_enabled": False,
-        "global": {
-            "backup_path": "./backups",
-            "screenshot_path": "./screenshots",
-            "record_duration": 30,
-            "scrcpy_path": "scrcpy",
-            "log_path": "./logs",
-        },
-        "devices": {},
-    }
-
-
-def load_config() -> Dict[str, Any]:
-    config = default_config()
-    if not CONFIG_PATH.exists():
-        return config
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception as e:
-        logger.error(f"Fehler beim Laden von {CONFIG_PATH}: {e}")
-        return config
-    merged = default_config()
-    merged.update({k: v for k, v in raw.items() if k != "global"})
-    merged["global"].update(raw.get("global", {}))
-    merged["devices"] = raw.get("devices", {})
-    return merged
+CONTEXT = AppContext()
 
 
 def save_config(config: Dict[str, Any]) -> None:
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    path = CONTEXT.config_path
+    with path.open("w", encoding="utf-8") as f:
+        import json
         json.dump(config, f, indent=4, ensure_ascii=False)
 
 
-def check_license_safe(config: Dict[str, Any]) -> bool:
-    if not config.get("license_check_enabled", False):
-        return True
-    logger.warning("Lizenzprüfung ist aktiviert, aber noch nicht implementiert. Start wird erlaubt.")
-    return True
-
-
-def ensure_runtime_dirs(config: Dict[str, Any]) -> None:
-    Path(config["global"].get("backup_path", "./backups")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("screenshot_path", "./screenshots")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("log_path", "./logs")).mkdir(parents=True, exist_ok=True)
-    (BASE_DIR / "plugins").mkdir(parents=True, exist_ok=True)
-
-
 def run_dependency_checks() -> None:
-    results, warnings = check_all_dependencies()
-    if not results.get("adb"):
-        logger.critical("'adb' wurde nicht im Systempfad gefunden. Abbruch.")
-        print_header("POSEIDON", "v5.0-dev - ADB Power Tool")
-        print(f"{fg.RED}KRITISCHER FEHLER: 'adb' wurde nicht gefunden!{style.RESET}")
-        sys.exit(1)
-    if warnings:
-        print_header("POSEIDON", "Abhängigkeits-Warnung")
-        for warning in warnings:
-            print(f"{fg.YELLOW}[!] {warning}{style.RESET}")
-        print("-" * 50)
-        if sys.stdin.isatty() and not confirm("Möchten Sie trotzdem fortfahren?"):
-            sys.exit(0)
+    CONTEXT.check_dependencies()
 
 
 def show_logo() -> None:
@@ -138,17 +82,11 @@ def auto_check_updates(config: Dict[str, Any]) -> None:
         logger.error(f"Fehler beim Update-Check: {e}")
 
 
-def build_context() -> Tuple[Dict[str, Any], DeviceManager, ADBHandler, PluginManager]:
-    config = load_config()
-    ensure_runtime_dirs(config)
+def build_context():
+    config = CONTEXT.init_runtime()
     set_language(config.get("language", "de"))
     set_theme(config.get("theme", "light"))
-    check_license_safe(config)
-    device_manager = DeviceManager(config)
-    adb = ADBHandler(device_manager)
-    plugin_manager = PluginManager()
-    plugin_manager.discover_plugins()
-    return config, device_manager, adb, plugin_manager
+    return config, CONTEXT.device_manager, CONTEXT.adb, CONTEXT.plugin_manager
 
 
 def settings_menu(config: Dict[str, Any], device_manager: DeviceManager) -> None:
@@ -163,8 +101,18 @@ def settings_menu(config: Dict[str, Any], device_manager: DeviceManager) -> None
         print(f"6. {get_text('setting_language')}: {config.get('language', 'de')}")
         print(f"7. {get_text('setting_auto_update')}: {'an' if config.get('auto_update_check', True) else 'aus'}")
         print(f"8. Log-Pfad: {config['global'].get('log_path', './logs')}")
+        print(f"9. MobSF-URL: {config['global'].get('mobsf_url', 'http://127.0.0.1:8000')}")
+        print("10. MobSF API-Key: " + ("gesetzt" if config["global"].get("mobsf_api_key") else "leer"))
+        print(f"11. JADX GUI Command: {config['global'].get('jadx_gui_cmd', 'jadx-gui')}")
+        print(f"12. apktool Command: {config['global'].get('apktool_cmd', 'apktool')}")
+        print(f"13. Frida PS Command: {config['global'].get('frida_cmd', 'frida-ps')}")
+        print(f"14. Frida Trace Command: {config['global'].get('frida_trace_cmd', 'frida-trace')}")
+        print(f"15. Objection Command: {config['global'].get('objection_cmd', 'objection')}")
+        print(f"16. mitmproxy Command: {config['global'].get('mitmproxy_cmd', 'mitmproxy')}")
+        print(f"17. Burp Command: {config['global'].get('burp_cmd', 'burp')}")
+        print(f"18. Ghidra Command: {config['global'].get('ghidra_cmd', 'ghidraRun')}")
         print("0. " + get_text("back"))
-        choice = menu_prompt(get_text("choose_option"), range(0, 9))
+        choice = menu_prompt(get_text("choose_option"), range(0, 19))
         if choice == 0:
             break
         elif choice == 1:
@@ -203,6 +151,45 @@ def settings_menu(config: Dict[str, Any], device_manager: DeviceManager) -> None
             new_log_path = input("Neuer Log-Pfad: ").strip()
             if new_log_path:
                 config["global"]["log_path"] = new_log_path
+        elif choice == 9:
+            new_url = input("Neue MobSF-URL: ").strip()
+            if new_url:
+                config["global"]["mobsf_url"] = new_url
+        elif choice == 10:
+            new_key = input("Neuer MobSF API-Key (leer zum Entfernen): ").strip()
+            config["global"]["mobsf_api_key"] = new_key
+        elif choice == 11:
+            new_cmd = input("Neuer JADX GUI-Command: ").strip()
+            if new_cmd:
+                config["global"]["jadx_gui_cmd"] = new_cmd
+        elif choice == 12:
+            new_cmd = input("Neuer apktool-Command: ").strip()
+            if new_cmd:
+                config["global"]["apktool_cmd"] = new_cmd
+        elif choice == 13:
+            new_cmd = input("Neuer Frida PS-Command: ").strip()
+            if new_cmd:
+                config["global"]["frida_cmd"] = new_cmd
+        elif choice == 14:
+            new_cmd = input("Neuer Frida Trace-Command: ").strip()
+            if new_cmd:
+                config["global"]["frida_trace_cmd"] = new_cmd
+        elif choice == 15:
+            new_cmd = input("Neuer Objection-Command: ").strip()
+            if new_cmd:
+                config["global"]["objection_cmd"] = new_cmd
+        elif choice == 16:
+            new_cmd = input("Neuer mitmproxy-Command: ").strip()
+            if new_cmd:
+                config["global"]["mitmproxy_cmd"] = new_cmd
+        elif choice == 17:
+            new_cmd = input("Neuer Burp-Command: ").strip()
+            if new_cmd:
+                config["global"]["burp_cmd"] = new_cmd
+        elif choice == 18:
+            new_cmd = input("Neuer Ghidra-Command: ").strip()
+            if new_cmd:
+                config["global"]["ghidra_cmd"] = new_cmd
         save_config(config)
         wait_for_enter()
 
@@ -239,6 +226,9 @@ def render_main_menu(device_manager: DeviceManager) -> None:
     print("20. 🕵️ " + get_text("menu_analyzer"))
     print("21. 📈 Monitoring v2")
     print("22. 👁️ Vision / OCR v2")
+    print("23. 📡 PhoneSploit Pro")
+    print("24. 🔐 AndroidHack BackDoor")
+    print("25. 🕵️ AndroRAT")
     print(" 0. ❌ " + get_text("exit"))
 
 
@@ -288,14 +278,24 @@ def handle_menu_choice(choice: int, config: Dict[str, Any], device_manager: Devi
     elif choice == 20:
         analyzer.show_menu(device_manager, adb)
     elif choice == 21:
-        monitoring_v2.show_menu(device_manager, adb, config)
+        monitoring.show_menu(device_manager, adb, config)
     elif choice == 22:
-        ui_vision_v2.show_menu(device_manager, adb, config)
+        ui_vision.show_menu(device_manager, adb, config)
+    elif choice == 23:
+        plugin_manager.run_plugin_by_class(PhoneSploitProPlugin, device_manager, adb, config)
+    elif choice == 24:
+        plugin_manager.run_plugin_by_class(AndroidHackBackdoorPlugin, device_manager, adb, config)
+    elif choice == 25:
+        plugin_manager.run_plugin_by_class(AndroRATPlugin, device_manager, adb, config)
     return True
 
 
 def main() -> None:
-    color_init()
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    set_theme(CONTEXT.config.get("theme", "light") if hasattr(CONTEXT, "config") and CONTEXT.config else "light")
     logger.info("Poseidon v5.0-dev wird gestartet...")
     run_dependency_checks()
     config, device_manager, adb, plugin_manager = build_context()
@@ -304,12 +304,16 @@ def main() -> None:
     running = True
     while running:
         render_main_menu(device_manager)
-        choice = menu_prompt(get_text("choose_category"), range(0, 23))
+        choice = menu_prompt(get_text("choose_category"), range(0, 26))
         running = handle_menu_choice(choice, config, device_manager, adb, plugin_manager)
 
 
 if __name__ == "__main__":
     try:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
         main()
     except KeyboardInterrupt:
         print(f"\n{fg.YELLOW}{get_text('aborted')}{style.RESET}")

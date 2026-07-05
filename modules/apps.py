@@ -4,6 +4,7 @@ from utils.file_utils import ensure_dir, get_timestamp, save_file
 from utils.ansi_colors import fg, style
 from utils.decorators import require_device
 from utils.i18n import get_text
+from core.logger import audit_logger
 
 def show_menu(device_manager, adb):
     options = [
@@ -24,6 +25,8 @@ def show_menu(device_manager, adb):
 
 @require_device
 def list_apps(device_manager, adb, save_to_file=False):
+    if not device_manager.require_authorized_device():
+        return
     serial = device_manager.get_current_device()
     print(get_text("loading_app_list"))
     out, _, _ = adb.run_shell("pm list packages -f -3", serial)
@@ -42,6 +45,8 @@ def list_apps(device_manager, adb, save_to_file=False):
 @require_device
 def app_info(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
     package = input(get_text("enter_package"))
     if not package:
         return
@@ -55,6 +60,9 @@ def app_info(device_manager, adb):
 @require_device
 def backup_app(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
+    audit_logger.info("apps.backup start serial=%s", serial)
     package = input(get_text("enter_package"))
     if not package:
         return
@@ -65,6 +73,8 @@ def backup_app(device_manager, adb):
 
 @require_device
 def install_apk(device_manager, adb):
+    if not device_manager.require_authorized_device():
+        return
     serial = device_manager.get_current_device()
     path = input("APK Path: ")
     if not os.path.exists(path):
@@ -79,6 +89,8 @@ def install_apk(device_manager, adb):
 
 @require_device
 def uninstall_app(device_manager, adb):
+    if not device_manager.require_authorized_device():
+        return
     serial = device_manager.get_current_device()
     package = input(get_text("enter_package"))
     if not package or not confirm(f"Uninstall {package}?"):
@@ -91,6 +103,9 @@ def uninstall_app(device_manager, adb):
 @require_device
 def extract_apk(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
+    audit_logger.info("apps.extract start serial=%s", serial)
     package = input(get_text("enter_package"))
     if not package:
         return
@@ -108,6 +123,10 @@ def extract_apk(device_manager, adb):
 
 @require_device
 def batch_install(device_manager, adb):
+    serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
+    audit_logger.info("apps.batch_install start serial=%s", serial)
     folder = input("Folder with APK files: ")
     if not os.path.isdir(folder):
         print(get_text("invalid_input"))
@@ -119,15 +138,17 @@ def batch_install(device_manager, adb):
     print(f"Found APKs: {len(apks)}")
     if not confirm("Install?"):
         return
-    
     for apk in show_progress(apks, get_text("installing_apps")):
         full = os.path.join(folder, apk)
-        adb.run(f"install -r \"{full}\"", device_manager.get_current_device())
+        adb.run(f"install -r \"{full}\"", serial)
     wait_for_enter()
 
 @require_device
 def clear_cache(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
+    audit_logger.info("apps.clear_cache start serial=%s", serial)
     package = input(get_text("enter_package"))
     if not package:
         return
@@ -138,6 +159,8 @@ def clear_cache(device_manager, adb):
 @require_device
 def app_permissions(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
     package = input(get_text("enter_package"))
     if not package:
         return
@@ -149,6 +172,9 @@ def app_permissions(device_manager, adb):
 @require_device
 def batch_uninstall(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
+    audit_logger.info("apps.batch_uninstall start serial=%s", serial)
     print("Batch Uninstall: Enter package names (one per line, empty line to finish):")
     packages = []
     while True:
@@ -169,6 +195,9 @@ def batch_uninstall(device_manager, adb):
 @require_device
 def show_install_source(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
+    audit_logger.info("apps.show_install_source start serial=%s", serial)
     out, _, _ = adb.run_shell("pm list packages -f -i", serial)
     print("Apps with install source:")
     print(out)
@@ -181,9 +210,11 @@ def show_install_source(device_manager, adb):
 @require_device
 def open_playstore(device_manager, adb):
     serial = device_manager.get_current_device()
+    if not serial or not device_manager.require_authorized_device(serial):
+        return
     package = input(get_text("enter_package"))
     if not package:
         return
-    adb.run_shell(f"am start -a android.intent.action.VIEW -d market://details?id={package}", serial)
+    adb.run_shell(f"am start -a android.intent.action.VIEW -d 'market://details?id={package}'", serial)
     print("Play Store should open.")
     wait_for_enter()

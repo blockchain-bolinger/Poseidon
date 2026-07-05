@@ -1,4 +1,6 @@
 from utils.ui_helpers import clear_screen, print_header, menu_prompt, wait_for_enter, confirm
+from utils.cli_safety import sanitize_device_input
+import time
 
 def show_menu(device_manager, adb):
     while True:
@@ -47,9 +49,12 @@ def set_screen_timeout(device_manager, adb):
     if not serial:
         return
     timeout = input("Timeout in ms (z.B. 30000 = 30s, 0 = nie): ")
-    if timeout:
-        adb.run_shell(f"settings put system screen_off_timeout {timeout}", serial)
-        print("Timeout gesetzt.")
+    if not timeout or not timeout.isdigit() or int(timeout) < 0:
+        print("Ungültiger Wert.")
+        wait_for_enter()
+        return
+    adb.run_shell(f"settings put system screen_off_timeout {timeout}", serial)
+    print("Timeout gesetzt.")
     wait_for_enter()
 
 def set_animations(device_manager, adb):
@@ -57,11 +62,22 @@ def set_animations(device_manager, adb):
     if not serial:
         return
     scale = input("Skalierungsfaktor (0 = aus, 1 = normal): ")
-    if scale:
-        adb.run_shell(f"settings put global window_animation_scale {scale}", serial)
-        adb.run_shell(f"settings put global transition_animation_scale {scale}", serial)
-        adb.run_shell(f"settings put global animator_duration_scale {scale}", serial)
-        print("Animationsskalierung gesetzt.")
+    if not scale:
+        return
+    try:
+        value = float(scale)
+    except ValueError:
+        print("Ungültiger Wert.")
+        wait_for_enter()
+        return
+    if not (0.0 <= value <= 1.0):
+        print("Bereich 0 bis 1.")
+        wait_for_enter()
+        return
+    adb.run_shell(f"settings put global window_animation_scale {value}", serial)
+    adb.run_shell(f"settings put global transition_animation_scale {value}", serial)
+    adb.run_shell(f"settings put global animator_duration_scale {value}", serial)
+    print("Animationsskalierung gesetzt.")
     wait_for_enter()
 
 def show_overlay(device_manager, adb):

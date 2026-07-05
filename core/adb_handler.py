@@ -1,14 +1,14 @@
 import shlex
 import subprocess
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Generator
 
 from core.logger import logger
 from core.result import CommandResult
 
 
-class ADBHandlerV2:
-    """Gehärteter ADB-Handler mit Result-Objekt, Retry-Logik und Cache."""
+class ADBHandler:
+    """Gehärteter ADB-Handler mit Result-Objekt, Retry-Logik, Cache und Streaming."""
 
     def __init__(self, device_manager, cache_ttl: int = 30, default_timeout: int = 30, retries: int = 1):
         self.device_manager = device_manager
@@ -20,32 +20,44 @@ class ADBHandlerV2:
         self._last_serial = None
 
     def _get_serial(self, serial: Optional[str] = None) -> Optional[str]:
-        current_serial = serial if serial else self.device_manager.get_current_device()
-        if current_serial != self._last_serial:
-            self.clear_cache()
-            self._last_serial = current_serial
-        return current_serial
+        if serial:
+            return serial
+        cached = getattr(self, "_last_serial", None)
+        return cached
 
     def _build_cmd(self, cmd: str, serial: Optional[str] = None) -> str:
         s = self._get_serial(serial)
         return f"adb -s {s} {cmd}" if s else f"adb {cmd}"
 
-    def run_result(self, cmd: str, serial: Optional[str] = None, timeout: Optional[int] = None, use_cache: bool = False) -> CommandResult:
-        full_cmd = self._build_cmd(cmd, serial)
+    def run_result(self, cmd: str, serial: Optional[str] = None, timeout: Optional[int] = None, use_cache: bool = False, cmd_list: Optional[list] = None) -> CommandResult:
+        serial = self._get_serial(serial)
         timeout = timeout or self.default_timeout
 
-        if use_cache and full_cmd in self._generic_cache:
-            ts, cached = self._generic_cache[full_cmd]
-            if time.time() - ts < self.cache_ttl:
-                logger.debug(f"ADB cache hit: {full_cmd}")
-                return cached
+        if cmd_list is not None:
+            # Caller already built argv as a list — use it verbatim (no shell interpretation).
+            # This is the safe path for any externally-supplied values (web API input, etc.).
+            cmd_prefix = ["adb"]
+            if serial:
+                cmd_prefix += ["-s", serial]
+            full_cmd_list = cmd_prefix + cmd_list
+            full_cmd = " ".join(full_cmd_list)
+        else:
+            full_cmd = self._build_cmd(cmd, serial)
+            full_cmd_list = shlex.split(full_cmd)
+            if use_cache and full_cmd in self._generic_cache:
+                ts, cached = self._generic_cache[full_cmd]
+                if time.time() - ts < self.cache_ttl:
+                    logger.debug(f"ADB cache hit: {full_cmd}")
+                    return cached
 
         last_result = None
         for attempt in range(self.retries + 1):
             started = time.time()
             try:
-                cmd_list = shlex.split(full_cmd)
-                process = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                # When cmd_list came from an external caller, reuse it verbatim so
+                # untrusted values never go through shlex.split / shell parsing.
+                exec_cmd = cmd_list if cmd_list is not None else shlex.split(full_cmd)
+                process = subprocess.Popen(exec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 stdout, stderr = process.communicate(timeout=timeout)
                 result = CommandResult(
                     ok=process.returncode == 0,
@@ -101,6 +113,54 @@ class ADBHandlerV2:
     def run_shell(self, shell_cmd: str, serial: Optional[str] = None, timeout: Optional[int] = None, use_cache: bool = False) -> Tuple[str, str, int]:
         return self.run(f"shell {shell_cmd}", serial=serial, timeout=timeout, use_cache=use_cache)
 
+    def run_shell_args(self, *args: str, serial: Optional[str] = None, timeout: Optional[int] = None, use_cache: bool = False) -> Tuple[str, str, int]:
+        """Execute ``adb shell <arg1> <arg2> ...`` without a shell round-trip.
+
+        Each element of *args* is passed directly to the device shell, bypassing
+        any local shell interpretation.  This is the safe path for any value
+        that originates outside the operator (e.g. HTTP API input) to eliminate
+        command-injection risk.
+        """
+        shell_cmd = " ".join(args)
+        return self.run(f"shell {shell_cmd}", serial=serial, timeout=timeout, use_cache=use_cache)
+
+    def run_shell_stream(self, shell_cmd: str, serial: Optional[str] = None, max_duration_s: Optional[float] = None, max_lines: Optional[int] = None, heartbeat: Optional[str] = None) -> Generator[str, None, None]:
+        """Führt einen Shell-Befehl aus und streamt stdout zeilenweise, optional limitiert durch Zeit/Zeilen."""
+        full_cmd = self._build_cmd(f"shell {shell_cmd}", serial)
+        deadline = time.time() + (max_duration_s if max_duration_s is not None else 0)
+        yield_count = 0
+        try:
+            cmd_list = shlex.split(full_cmd)
+            process = subprocess.Popen(
+                cmd_list,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            for line in process.stdout:
+                if line:
+                    yield line
+                    yield_count += 1
+                    if max_lines is not None and yield_count >= max_lines:
+                        break
+                if max_duration_s is not None and time.time() >= deadline:
+                    break
+                if heartbeat and yield_count % 50 == 0:
+                    logger.debug("ADB stream heartbeat: %s", heartbeat)
+        except Exception as e:
+            logger.error("Fehler bei Streaming-Befehl %s: %s", full_cmd, e)
+            yield f"Fehler: {e}\n"
+        finally:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+
     def get_device_property(self, prop: str, serial: Optional[str] = None) -> str:
         s = self._get_serial(serial)
         cache_key = f"{s}:{prop}"
@@ -113,8 +173,4 @@ class ADBHandlerV2:
     def clear_cache(self) -> None:
         self._generic_cache = {}
         self._property_cache = {}
-        logger.info("ADBHandlerV2 cache cleared.")
-
-
-# Backward-compatible alias
-ADBHandler = ADBHandlerV2
+        logger.info("ADBHandler cache cleared.")

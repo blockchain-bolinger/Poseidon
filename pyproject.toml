@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["core", "services", "modules", "utils"]
+omit = ["main.py", "cli.py", "web_ui.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

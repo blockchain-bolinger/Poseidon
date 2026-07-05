@@ -1,79 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
+
+from core.app import AppContext
+from core.logger import logger
+from services.monitoring_service import MonitoringService
+from services.vision_service import VisionService
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
-
-from core.device_manager import DeviceManager
-from core.adb_handler import ADBHandler
-from core.logger import logger
-from services.monitoring_service_v2 import MonitoringServiceV2
-from services.vision_service_v2 import VisionServiceV2
-from utils.dependency_checker import check_all_dependencies
-
-CONFIG_PATH = BASE_DIR / "config.json"
+CONTEXT = AppContext()
 
 
 def default_config() -> dict:
-    return {
-        "version": "4.0-dev",
-        "language": "de",
-        "theme": "light",
-        "global": {
-            "backup_path": "./backups",
-            "screenshot_path": "./screenshots",
-            "record_duration": 30,
-            "scrcpy_path": "scrcpy",
-            "log_path": "./logs",
-        },
-        "devices": {},
-    }
+    return CONTEXT._defaults()
 
 
 def load_config() -> dict:
-    config = default_config()
-    if not CONFIG_PATH.exists():
-        return config
-    try:
-        raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.warning(f"config.json konnte nicht sauber gelesen werden: {e}")
-        return config
-
-    legacy_global_keys = {"backup_path", "screenshot_path", "record_duration", "scrcpy_path", "log_path"}
-    config.update({k: v for k, v in raw.items() if k not in legacy_global_keys and k != "global"})
-    if isinstance(raw.get("global"), dict):
-        config["global"].update(raw["global"])
-    for key in legacy_global_keys:
-        if key in raw:
-            config["global"][key] = raw[key]
-    config["devices"] = raw.get("devices", {})
-    return config
+    return CONTEXT.load_config()
 
 
-def init_runtime():
-    results, warnings = check_all_dependencies()
-    if not results.get("adb"):
-        print("ADB wurde nicht gefunden.")
-        sys.exit(1)
-    if warnings:
-        for warning in warnings:
-            logger.warning(warning)
-    config = load_config()
-    Path(config["global"].get("screenshot_path", "./screenshots")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("backup_path", "./backups")).mkdir(parents=True, exist_ok=True)
-    Path(config["global"].get("log_path", "./logs")).mkdir(parents=True, exist_ok=True)
-    device_manager = DeviceManager(config)
-    adb = ADBHandler(device_manager)
-    monitoring = MonitoringServiceV2(device_manager, adb, export_dir=config["global"].get("log_path", "./logs"))
-    vision = VisionServiceV2(device_manager, adb, screenshot_dir=config["global"].get("screenshot_path", "./screenshots"))
-    return config, device_manager, adb, monitoring, vision
+def init_runtime() -> tuple[dict[Any, Any], Any, Any, MonitoringService, VisionService]:
+    config = CONTEXT.init_runtime()
+    monitoring = MonitoringService(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        poseidon_version=config.get("version", "5.0-dev"),
+        export_dir=config["global"].get("log_path", "./logs"),
+    )
+    vision = VisionService(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        screenshot_dir=config["global"].get("screenshot_path", "./screenshots"),
+    )
+    return config, CONTEXT.device_manager, CONTEXT.adb, monitoring, vision
 
 
 def print_json(data):
@@ -81,7 +48,7 @@ def print_json(data):
 
 
 def cmd_devices_list(args) -> int:
-    _, device_manager, _, _, _ = init_runtime()
+    config, device_manager, _, _, _ = init_runtime()
     devices = device_manager.refresh_devices()
     payload = {"devices": devices, "count": len(devices)}
     if args.json:
@@ -165,6 +132,8 @@ def cmd_vision_find_text(args) -> int:
 
 
 def cmd_vision_tap_text(args) -> int:
+    if not CONTEXT.device_manager.require_authorized_device():
+        return 1
     _, _, adb, _, vision = init_runtime()
     image_path = vision.take_screenshot(serial=args.serial, filename="vision_v4_tap_capture.png")
     match = vision.best_match(args.query, image_path, min_confidence=args.min_confidence)
@@ -195,7 +164,7 @@ def cmd_vision_tap_text(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="poseidon-cli-v4", description="Headless CLI für Poseidon v4")
+    parser = argparse.ArgumentParser(prog="poseidon-cli", description="Headless CLI für Poseidon")
     sub = parser.add_subparsers(dest="command")
     sub.required = True
 

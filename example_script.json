@@ -1,0 +1,43 @@
+{
+  "name": "Beispiel-Skript",
+  "description": "Zeigt Ger\u00e4teinfo, wartet, macht Screenshot",
+  "commands": [
+    {
+      "command": "shell getprop ro.product.model",
+      "description": "Modell abfragen",
+      "save_output": true
+    },
+    {
+      "command": "shell dumpsys battery | grep level",
+      "description": "Akkustand"
+    },
+    {
+      "action": "wait",
+      "command": "2",
+      "description": "2 Sekunden warten"
+    },
+    {
+      "action": "confirm",
+      "command": "Screenshot erstellen?",
+      "description": "Benutzerbest\u00e4tigung"
+    },
+    {
+      "command": "shell screencap -p /sdcard/screen.png",
+      "ignore_errors": false
+    },
+    {
+      "command": "pull /sdcard/screen.png ./screenshot_batch.png"
+    },
+    {
+      "command": "shell rm /sdcard/screen.png"
+    },
+    {
+      "action": "user_input",
+      "command": "benutzername",
+      "description": "Gib einen Namen ein"
+    },
+    {
+      "command": "shell echo 'Hallo {benutzername}' > /sdcard/hallo.txt"
+    }
+  ]
+}

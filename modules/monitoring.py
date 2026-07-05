@@ -1,19 +1,32 @@
-from core.adb_handler import ADBHandler
-from core.device_manager import DeviceManager
 from services.monitoring_service import MonitoringService
-from utils.ui_helpers import print_header, menu_prompt, wait_for_enter
+from services.monitoring_service import MonitoringService
+
+from core.app import AppContext
+
+CONTEXT = AppContext()
+
+def build_monitoring_service(config):
+    return MonitoringService(
+        CONTEXT.device_manager,
+        CONTEXT.adb,
+        poseidon_version=config.get("version", "5.0-dev"),
+        export_dir=config.get("global", {}).get("log_path", "./logs"),
+    )
 
 
-def show_menu(device_manager: DeviceManager, adb: ADBHandler, config: dict) -> None:
-    service = MonitoringService(device_manager, adb)
+def show_menu(device_manager, adb, config):
+    export_dir = config.get("global", {}).get("log_path", "./logs")
+    service = build_monitoring_service(config)
 
     while True:
-        print_header("Monitoring", "Gerätemetriken und Live-Status")
+        print_header("Geräte-Monitoring", "Gerätemetriken mit Export")
         print("1. Einmalige Snapshot-Erfassung")
-        print("2. Snapshot mit Rohdaten anzeigen")
+        print("2. Snapshot + CSV-Export")
+        print("3. Snapshot + JSONL-Export")
+        print("4. Snapshot + beide Exporte")
         print("0. Zurück")
 
-        choice = menu_prompt("Option wählen", range(0, 3))
+        choice = menu_prompt("Option wählen", range(0, 5))
         if choice == 0:
             break
 
@@ -21,17 +34,19 @@ def show_menu(device_manager: DeviceManager, adb: ADBHandler, config: dict) -> N
         data = metrics.to_dict()
 
         print("-" * 50)
-        print(f"Zeitpunkt: {data.get('timestamp')}")
-        print(f"Gerät: {data.get('serial')}")
-        print(f"Akku: {data.get('battery_level')}%")
-        print(f"Akku-Temperatur: {data.get('battery_temp_c')} °C")
-        print(f"RAM genutzt: {data.get('memory_used_mb')} MB")
-        print(f"RAM frei: {data.get('memory_free_mb')} MB")
-        print(f"CPU-Last: {data.get('cpu_load')}")
+        for key, value in data.items():
+            print(f"{key}: {value}")
 
         if choice == 2:
-            print("\nRohdaten:")
-            for key, value in data.items():
-                print(f"- {key}: {value}")
+            path = service.export_csv(metrics)
+            print(f"CSV exportiert nach: {path}")
+        elif choice == 3:
+            path = service.export_jsonl(metrics)
+            print(f"JSONL exportiert nach: {path}")
+        elif choice == 4:
+            csv_path = service.export_csv(metrics)
+            jsonl_path = service.export_jsonl(metrics)
+            print(f"CSV exportiert nach: {csv_path}")
+            print(f"JSONL exportiert nach: {jsonl_path}")
 
         wait_for_enter()
